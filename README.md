@@ -1,1 +1,1 @@
-# cdn-analytics
+# cdn-log-analytics
