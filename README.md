@@ -6,12 +6,11 @@ It downloads data, analyze it and insert results into an PosgreSQL database.
 ## How to use it
 ### Download
 Usage of download:
-  -bucketurl string
-        The url of the bucket where logs are located
-  -folder string
-        The destination folder
-  -verbose
-        verbose
+
+- bucketurl (string): The url of the bucket where logs are located
+- folder (string): The destination folder
+- verbose (bool)
+
 
 Example:
 ```bash
@@ -20,14 +19,11 @@ Example:
 
 ### Analyze
 Usage of analyze:
-  -folder string
-        Logs source folder
-  -format string
-        Output file format. It can be sql or csv
-  -output string
-        Output file path
-  -verbose
-        verbose
+
+- folder (string): Logs source folder
+- format (string): Output file format. It can be sql or csv
+- output (string): Output file path
+- verbose (bool)
 
 Examples:
 ```bash
@@ -35,22 +31,16 @@ Examples:
 ./cdn-log-analytics analyze -folder ./example-logs -output test.csv -format csv
 ```
 
-## Insert
+### Insert
 Usage of insert:
-  -db string
-        Database name
-  -filepath string
-        Path to the file containing the query to execute.
-  -host string
-        PostgreSQL host. (default value: localhost) (default "localhost")
-  -password string
-        Database password
-  -port int
-        PostgreSQL port. (default value: 5432) (default 5432)
-  -user string
-        Database username
-  -verbose
-        verbose
+
+- db (string): Database name
+- filepath (string): Path to the file containing the query to execute.
+- host (string): PostgreSQL host. (default value: localhost) (default "localhost")
+- password (string): Database password
+- port (int): PostgreSQL port. (default value: 5432) (default 5432)
+- user (string): Database username
+- verbose (bool)
 
 Examples:
 ```bash
