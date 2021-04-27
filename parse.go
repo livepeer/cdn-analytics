@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,6 +14,9 @@ import (
 )
 
 type VideoStats struct {
+	date          string
+	streamId      string
+	IP            string
 	IPs           []string
 	TotalFilesize int64
 	TotalCsBytes  int64
@@ -23,10 +25,10 @@ type VideoStats struct {
 
 const (
 	fieldSeparator = ","
+	topLoad        = 10
 )
 
 var arrDetails map[string]map[string]*VideoStats
-var lock = sync.Mutex{}
 
 func validateParseParameters(folder string, output string, format string) error {
 	// check if folder is a valid path
@@ -51,6 +53,7 @@ func parseFiles(folder string, output string, format string) error {
 	arrDetails = make(map[string]map[string]*VideoStats)
 	// get file list
 	var wg sync.WaitGroup
+	c := make(chan VideoStats)
 	err := filepath.Walk(folder,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -58,13 +61,13 @@ func parseFiles(folder string, output string, format string) error {
 			}
 			if isValidFile(path) {
 				wg.Add(1)
-				go func(wg *sync.WaitGroup) {
-					defer wg.Done()
+				go func(wg *sync.WaitGroup, c chan VideoStats) {
 					if verbose {
 						log.Println("Parse file: ", path)
 					}
-					err = parseFile(path)
-				}(&wg)
+					err = parseFile(path, c)
+					wg.Done()
+				}(&wg, c)
 			}
 
 			if err != nil {
@@ -75,7 +78,27 @@ func parseFiles(folder string, output string, format string) error {
 	if err != nil {
 		return err
 	}
+	log.Println("Wait for goroutine to finish")
+
+	go func(c chan VideoStats) {
+		for tempVideoStat := range c {
+			//log.Printf("%+v", tempVideoStat)
+			if arrDetails[tempVideoStat.date] == nil {
+				arrDetails[tempVideoStat.date] = make(map[string]*VideoStats)
+			}
+			if arrDetails[tempVideoStat.date][tempVideoStat.streamId] != nil {
+				tempVideoStat.IPs = append(arrDetails[tempVideoStat.date][tempVideoStat.streamId].IPs, tempVideoStat.IP)
+				tempVideoStat.TotalFilesize = arrDetails[tempVideoStat.date][tempVideoStat.streamId].TotalFilesize + tempVideoStat.TotalFilesize
+				tempVideoStat.TotalCsBytes = arrDetails[tempVideoStat.date][tempVideoStat.streamId].TotalCsBytes + tempVideoStat.TotalCsBytes
+				tempVideoStat.TotalScyBytes = arrDetails[tempVideoStat.date][tempVideoStat.streamId].TotalScyBytes + tempVideoStat.TotalScyBytes
+			}
+
+			arrDetails[tempVideoStat.date][tempVideoStat.streamId] = &tempVideoStat
+		}
+	}(c)
 	wg.Wait()
+	close(c)
+	log.Println("Create output file")
 	// print results
 	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY, 0644)
 	defer file.Close()
@@ -128,17 +151,7 @@ func parseFiles(folder string, output string, format string) error {
 	return nil
 }
 
-func createTempDirectory() (string, error) {
-	dir, err := ioutil.TempDir("", "log-parser")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(dir)
-
-	return dir, nil
-}
-
-func parseFile(file string) error {
+func parseFile(file string, c chan VideoStats) error {
 	// Create new reader to decompress gzip.
 	f, err := os.Open(file)
 	if err != nil {
@@ -156,15 +169,16 @@ func parseFile(file string) error {
 			continue
 		}
 
-		parseLine(contents.Text())
+		parseLine(contents.Text(), c)
 	}
+	f.Close()
 	if verbose {
 		log.Println("End file: ", file)
 	}
 	return nil
 }
 
-func parseLine(line string) {
+func parseLine(line string, c chan VideoStats) {
 	toks := strings.Split(line, "\t")
 
 	if len(toks) < 17 {
@@ -186,7 +200,7 @@ func parseLine(line string) {
 	}
 
 	if verbose {
-		log.Printf("%s %s %s %s %s %s", date, ip, fileSize, csBytes, scBytes, streamId)
+		//log.Printf("%s %s %s %s %s %s", date, ip, fileSize, csBytes, scBytes, streamId)
 	}
 
 	csBytesInt, err := strconv.ParseInt(csBytes, 10, 64)
@@ -204,33 +218,21 @@ func parseLine(line string) {
 		log.Printf("Error: invalid int conversion format: '%s'", fileSize)
 	}
 	var tempVideoStat VideoStats
+	tempVideoStat.IP = ip
+	tempVideoStat.TotalFilesize = fileSizeInt
+	tempVideoStat.TotalCsBytes = csBytesInt
+	tempVideoStat.TotalScyBytes = scBytesInt
+	tempVideoStat.date = date
+	tempVideoStat.streamId = streamId
 
-	lock.Lock()
-	if arrDetails[date] == nil {
-		arrDetails[date] = make(map[string]*VideoStats)
-	}
-	if arrDetails[date][streamId] == nil {
-		tempVideoStat.IPs = []string{ip}
-		tempVideoStat.TotalFilesize = fileSizeInt
-		tempVideoStat.TotalCsBytes = csBytesInt
-		tempVideoStat.TotalScyBytes = scBytesInt
-	} else {
-		tempVideoStat.IPs = append(arrDetails[date][streamId].IPs, ip)
-		tempVideoStat.TotalFilesize = arrDetails[date][streamId].TotalFilesize + fileSizeInt
-		tempVideoStat.TotalCsBytes = arrDetails[date][streamId].TotalCsBytes + csBytesInt
-		tempVideoStat.TotalScyBytes = arrDetails[date][streamId].TotalScyBytes + scBytesInt
-	}
-
-	//log.Printf("%+v\n", tempVideoStat)
-	arrDetails[date][streamId] = &tempVideoStat
-	lock.Unlock()
+	c <- tempVideoStat
 
 	return
 }
 
 func getStreamId(url string) (string, error) {
 	toks := strings.Split(url, "/")
-	if len(toks) < 3 {
+	if len(toks) < 4 {
 		return "", errors.New("invalid URL format")
 	}
 	return toks[2], nil

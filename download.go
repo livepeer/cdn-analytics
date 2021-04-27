@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -17,13 +17,23 @@ import (
 
 func validateDownloadParameters(bucketUrl string, folder string) error {
 	if len(bucketUrl) == 0 {
-		return errors.New("Bucket url cannot be null or empty")
+		return fmt.Errorf("Bucket url cannot be null or empty")
 	}
+
+	if strings.HasPrefix(bucketUrl, "gs://") {
+		return fmt.Errorf("Bucket url should not include gs:// prefix. Please remove it")
+	}
+
+	// check if folder is a valid path
+	if _, err := os.Stat(folder); err != nil {
+		return fmt.Errorf("%s is an invalid path. Error: %+v", folder, err)
+	}
+
 	return nil
 }
 
 // listFiles lists objects within specified bucket.
-func listAndDownloadFiles(bucket string, downloadFolder string) error {
+func listAndDownloadFiles(bucket string, folder string) error {
 	// bucket := "bucket-name"
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx, option.WithoutAuthentication())
@@ -32,16 +42,7 @@ func listAndDownloadFiles(bucket string, downloadFolder string) error {
 	}
 	defer client.Close()
 
-	folder := downloadFolder
-	// create temp directory
-	if downloadFolder == "" {
-		folder, err = createTempDirectory()
-		if err != nil {
-			return err
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*600)
 	defer cancel()
 
 	it := client.Bucket(bucket).Objects(ctx, nil)
@@ -53,8 +54,12 @@ func listAndDownloadFiles(bucket string, downloadFolder string) error {
 		if err != nil {
 			return fmt.Errorf("Bucket(%q).Objects: %v", bucket, err)
 		}
-		log.Println("Download file: ", attrs.Name)
-		func() error {
+
+		if verbose {
+			log.Println("Download file: ", attrs.Name)
+		}
+
+		go func() error {
 			data, err := downloadFile(bucket, attrs.Name)
 			if err != nil {
 				return err
@@ -63,7 +68,9 @@ func listAndDownloadFiles(bucket string, downloadFolder string) error {
 			fileName := filepath.FromSlash(folder + "/" + attrs.Name)
 			dir := filepath.Dir(fileName)
 			os.MkdirAll(dir, os.ModePerm)
-			fmt.Printf("Writing file: %s\n\n", fileName)
+			if verbose {
+				log.Printf("Writing file: %s\n\n", fileName)
+			}
 			err = ioutil.WriteFile(fileName, data, 0644)
 			if err != nil {
 				return err
@@ -84,7 +91,7 @@ func downloadFile(bucket string, object string) ([]byte, error) {
 	}
 	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*600)
 	defer cancel()
 
 	rc, err := client.Bucket(bucket).Object(object).NewReader(ctx)
@@ -97,6 +104,8 @@ func downloadFile(bucket string, object string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ioutil.ReadAll: %v", err)
 	}
-	log.Printf("Blob %v downloaded.\n", object)
+	if verbose {
+		log.Printf("Blob %v downloaded.\n", object)
+	}
 	return data, nil
 }

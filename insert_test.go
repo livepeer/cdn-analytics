@@ -72,7 +72,7 @@ func TestGetPgConnectionString_invalid(t *testing.T) {
 func TestInsertData_invalidhost(t *testing.T) {
 	verbose = true
 	conf, _ := validateInsertParameters("invalidhost", 5432, "test", "Pwd", "cdn-log")
-	err := insertData(conf, "./tests_ressources/test_insert.sql")
+	err := insertData(conf, "./tests_resources/test_insert.sql")
 	if err == nil {
 		t.Errorf("Invalid host should throw an error")
 	} else {
@@ -82,7 +82,7 @@ func TestInsertData_invalidhost(t *testing.T) {
 func TestInsertData_invalidpath(t *testing.T) {
 	verbose = true
 	conf, _ := validateInsertParameters("rogue.db.elephantsql.com", 5432, "itpqedrl", "BMn2AB7nbffHW84O-Mf_MRG-WZpM67fr", "itpqedrl")
-	p := filepath.FromSlash("./tests_ressources/test_insert_notvalid.sql")
+	p := filepath.FromSlash("./tests_resources/test_insert_notvalid.sql")
 	err := insertData(conf, p)
 	if err == nil {
 		t.Errorf("Invalid path should throw an error")
@@ -94,7 +94,7 @@ func TestInsertData_invalidpath(t *testing.T) {
 func TestInsertData_invalidfile(t *testing.T) {
 	verbose = true
 	conf, _ := validateInsertParameters("rogue.db.elephantsql.com", 5432, "itpqedrl", "BMn2AB7nbffHW84O-Mf_MRG-WZpM67fr", "itpqedrl")
-	p := filepath.FromSlash("./tests_ressources/test_insert_invalid.sql")
+	p := filepath.FromSlash("./tests_resources/test_insert_invalid.sql")
 	err := insertData(conf, p)
 	if err == nil {
 		t.Errorf("Invalid file should throw an error")
@@ -106,7 +106,7 @@ func TestInsertData_invalidfile(t *testing.T) {
 func TestInsertData_validfile(t *testing.T) {
 	verbose = true
 	conf, _ := validateInsertParameters("rogue.db.elephantsql.com", 5432, "itpqedrl", "BMn2AB7nbffHW84O-Mf_MRG-WZpM67fr", "itpqedrl")
-	p := filepath.FromSlash("./tests_ressources/test_insert.sql")
+	p := filepath.FromSlash("./tests_resources/test_insert.sql")
 	err := insertData(conf, p)
 	if err != nil {
 		t.Errorf("Error received: %+v\n", err)

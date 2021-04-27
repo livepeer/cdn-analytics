@@ -1,10 +1,91 @@
 package main
 
 import (
+	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
+func TestValidateParseParameters(t *testing.T) {
+	err := validateParseParameters("./tests_resources", "./tests_resources/out.csv", ".csv")
+	if err == nil {
+		t.Errorf(".csv is an invalid extension")
+	}
+
+	err = validateParseParameters("./test_resources", "./tests_resources/out.csv", "csv")
+	if err == nil {
+		t.Errorf(".test_resources is an invalid folder")
+	}
+
+	err = validateParseParameters("./tests_resources", "./test_resources/out.csv", "csv")
+	if err == nil {
+		t.Errorf("./test_resources/out.csv is an invalid output")
+	}
+
+	err = validateParseParameters("./tests_resources", "./tests_resources/out.csv", "csv")
+	if err != nil {
+		t.Errorf("Parametes should be valid")
+	}
+}
+func TestParseFiles(t *testing.T) {
+	if _, err := os.Stat("./tests_resources/out.csv"); !os.IsNotExist(err) {
+		os.Remove("./tests_resources/out.csv")
+	}
+
+	err := parseFiles("./tests_resources/logs_empty", "./tests_resources/out.csv", "csv")
+	if err != nil {
+		t.Errorf("ParseFiles should not throw. errror: %+v", err)
+	}
+
+	if _, err := os.Stat("./tests_resources/out.csv"); os.IsNotExist(err) {
+		t.Errorf("ParseFile didn't create an output file")
+	}
+
+	content, _ := ioutil.ReadFile("./tests_resources/out.csv")
+	text := string(content)
+	expectedContent, _ := ioutil.ReadFile("./tests_resources/expected_result/logs.csv")
+	expectedContentText := string(content)
+	if text != expectedContentText {
+		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, text)
+	}
+
+	err = parseFiles("./tests_resources/logs", "./tests_resources/out.csv", "csv")
+	if err != nil {
+		t.Errorf("ParseFiles should not throw. errror: %+v", err)
+	}
+
+	if _, err := os.Stat("./tests_resources/out.csv"); os.IsNotExist(err) {
+		t.Errorf("ParseFile didn't create an output file")
+	}
+
+	content, _ = ioutil.ReadFile("./tests_resources/out.csv")
+	text = string(content)
+	expectedContent, _ = ioutil.ReadFile("./tests_resources/expected_result/logs_empty.csv")
+	expectedContentText = string(content)
+	if text != expectedContentText {
+		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, text)
+	}
+}
+func TestGetStreamId(t *testing.T) {
+	streamId := "/wp-admin/index.php"
+	id, err := getStreamId(streamId)
+	if err == nil {
+		t.Errorf("%s should be an invalid stream id", streamId)
+	}
+
+	streamId = "/hls/fiolz5txbwy3smsr/0_1/index.m3u8"
+	idExpected := "fiolz5txbwy3smsr"
+	id, err = getStreamId(streamId)
+	if err != nil {
+		t.Errorf("%s should be a valid stream id", streamId)
+	}
+
+	if id != idExpected {
+		t.Errorf("Invalid stream id. Expected value: %s. Received value: %s", idExpected, id)
+	}
+
+}
 func TestIsCommentLine(t *testing.T) {
 	if isCommentLine("notacomment") {
 		t.Errorf("Line should not be a comment")
@@ -24,11 +105,11 @@ func TestIsEmptyLine(t *testing.T) {
 	}
 }
 func TestIsValidFile(t *testing.T) {
-	if isValidFile(filepath.FromSlash("./tests_ressources/invalid.log")) {
+	if isValidFile(filepath.FromSlash("./tests_resources/invalid.log")) {
 		t.Errorf("invalid.log format should be invalid")
 	}
 
-	if !(isValidFile(filepath.FromSlash("./tests_ressources/valid.log.gz"))) {
+	if !(isValidFile(filepath.FromSlash("./tests_resources/valid.log.gz"))) {
 		t.Errorf("valid.log.gz format should be valid")
 	}
 }
