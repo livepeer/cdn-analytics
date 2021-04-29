@@ -1,7 +1,0 @@
-#Date: 2021-04-16 23:45:04
-#Version: 1.0
-#Software: Highwinds Software
-#Fields: date	time	cs-method	c-ip	cs-version	cs-referrer	cs-user-agent	filesize	cs-bytes	sc-bytes	s-ip	time-taken	sc-status	cs-uri-query	cs-uri-stem	x-byte-range	comment
-2021-04-16	23:45:04	GET	85.25.194.0	https	-	-	59	398	712	151.139.86.55	0.032	200	-	/hls/8ecdg4hmi1e4g78w/index.m3u8	-	-
-2021-04-16	23:45:04	GET	85.25.194.0	https	-	-	59	398	712	151.139.86.129	0.031	200	-	/hls/d73f6cos8ryko8yn/index.m3u8	-	-
-

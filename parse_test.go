@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -43,11 +44,9 @@ func TestParseFiles(t *testing.T) {
 	}
 
 	content, _ := ioutil.ReadFile("./tests_resources/out.csv")
-	text := string(content)
-	expectedContent, _ := ioutil.ReadFile("./tests_resources/expected_result/logs.csv")
-	expectedContentText := string(content)
-	if text != expectedContentText {
-		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, text)
+	expectedContent, _ := ioutil.ReadFile("./tests_resources/expected_result/logs_empty.csv")
+	if !bytes.Equal(content, expectedContent) {
+		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, content)
 	}
 
 	err = parseFiles("./tests_resources/logs", "./tests_resources/out.csv", "csv")
@@ -60,11 +59,9 @@ func TestParseFiles(t *testing.T) {
 	}
 
 	content, _ = ioutil.ReadFile("./tests_resources/out.csv")
-	text = string(content)
-	expectedContent, _ = ioutil.ReadFile("./tests_resources/expected_result/logs_empty.csv")
-	expectedContentText = string(content)
-	if text != expectedContentText {
-		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, text)
+	expectedContent, _ = ioutil.ReadFile("./tests_resources/expected_result/logs.csv")
+	if !bytes.Equal(content, expectedContent) {
+		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, content)
 	}
 }
 func TestGetStreamId(t *testing.T) {
@@ -170,4 +167,16 @@ func TestGetCsvHeader_valid(t *testing.T) {
 	if h != val {
 		t.Errorf("Invalid header. Expected value: %s, received value: %s", val, h)
 	}
+}
+
+func TestFind(t *testing.T) {
+	slice := []string{"this", "is", "a", "test"}
+	if !find(slice, "test") {
+		t.Errorf("Invalid result. the string 'test' is included in the slice ")
+	}
+
+	if find(slice, "nottest") {
+		t.Errorf("Invalid result. the string 'nottest' isn't included in the slice ")
+	}
+
 }
