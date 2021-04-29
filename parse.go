@@ -14,21 +14,26 @@ import (
 )
 
 type VideoStats struct {
-	date          string
-	streamId      string
-	IP            string
 	IPs           []string
 	TotalFilesize int64
 	TotalCsBytes  int64
 	TotalScyBytes int64
+	Count         int
+}
+
+type VideoStat struct {
+	date     string
+	streamId string
+	IP       string
+	Filesize int64
+	CsBytes  int64
+	ScyBytes int64
 }
 
 const (
 	fieldSeparator = ","
 	topLoad        = 10
 )
-
-var arrDetails map[string]map[string]*VideoStats
 
 func validateParseParameters(folder string, output string, format string) error {
 	// check if folder is a valid path
@@ -50,10 +55,10 @@ func validateParseParameters(folder string, output string, format string) error 
 }
 
 func parseFiles(folder string, output string, format string) error {
-	arrDetails = make(map[string]map[string]*VideoStats)
+	arrDetails := make(map[string]map[string]*VideoStats)
 	// get file list
 	var wg sync.WaitGroup
-	c := make(chan VideoStats)
+	c := make(chan VideoStat)
 	err := filepath.Walk(folder,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -61,7 +66,7 @@ func parseFiles(folder string, output string, format string) error {
 			}
 			if isValidFile(path) {
 				wg.Add(1)
-				go func(wg *sync.WaitGroup, c chan VideoStats) {
+				go func(wg *sync.WaitGroup, c chan VideoStat) {
 					if verbose {
 						log.Println("Parse file: ", path)
 					}
@@ -80,20 +85,29 @@ func parseFiles(folder string, output string, format string) error {
 	}
 	log.Println("Wait for goroutine to finish")
 
-	go func(c chan VideoStats) {
-		for tempVideoStat := range c {
-			//log.Printf("%+v", tempVideoStat)
-			if arrDetails[tempVideoStat.date] == nil {
-				arrDetails[tempVideoStat.date] = make(map[string]*VideoStats)
+	go func(c chan VideoStat) {
+		for chainVideoStat := range c {
+			var tempVideoStat VideoStats
+			if arrDetails[chainVideoStat.date] == nil {
+				arrDetails[chainVideoStat.date] = make(map[string]*VideoStats)
 			}
-			if arrDetails[tempVideoStat.date][tempVideoStat.streamId] != nil {
-				tempVideoStat.IPs = append(arrDetails[tempVideoStat.date][tempVideoStat.streamId].IPs, tempVideoStat.IP)
-				tempVideoStat.TotalFilesize = arrDetails[tempVideoStat.date][tempVideoStat.streamId].TotalFilesize + tempVideoStat.TotalFilesize
-				tempVideoStat.TotalCsBytes = arrDetails[tempVideoStat.date][tempVideoStat.streamId].TotalCsBytes + tempVideoStat.TotalCsBytes
-				tempVideoStat.TotalScyBytes = arrDetails[tempVideoStat.date][tempVideoStat.streamId].TotalScyBytes + tempVideoStat.TotalScyBytes
+			if arrDetails[chainVideoStat.date][chainVideoStat.streamId] != nil {
+				if !find(arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs, chainVideoStat.IP) {
+					tempVideoStat.IPs = append(arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs, chainVideoStat.IP)
+				}
+				tempVideoStat.Count = arrDetails[chainVideoStat.date][chainVideoStat.streamId].Count + 1
+				tempVideoStat.TotalFilesize = arrDetails[chainVideoStat.date][chainVideoStat.streamId].TotalFilesize + chainVideoStat.Filesize
+				tempVideoStat.TotalCsBytes = arrDetails[chainVideoStat.date][chainVideoStat.streamId].TotalCsBytes + chainVideoStat.CsBytes
+				tempVideoStat.TotalScyBytes = arrDetails[chainVideoStat.date][chainVideoStat.streamId].TotalScyBytes + chainVideoStat.ScyBytes
+			} else {
+				tempVideoStat.IPs = []string{chainVideoStat.IP}
+				tempVideoStat.TotalFilesize = chainVideoStat.Filesize
+				tempVideoStat.TotalCsBytes = chainVideoStat.CsBytes
+				tempVideoStat.TotalScyBytes = chainVideoStat.ScyBytes
+				tempVideoStat.Count = 1
 			}
+			arrDetails[chainVideoStat.date][chainVideoStat.streamId] = &tempVideoStat
 
-			arrDetails[tempVideoStat.date][tempVideoStat.streamId] = &tempVideoStat
 		}
 	}(c)
 	wg.Wait()
@@ -126,14 +140,13 @@ func parseFiles(folder string, output string, format string) error {
 
 	for date, val := range arrDetails {
 		for stream, details := range val {
-			countUniqueIPs := countUnique(details.IPs)
 
 			bufString := ""
 			switch format {
 			case "csv":
-				bufString = getCsvLine(date, stream, countUniqueIPs, len(details.IPs), details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize)
+				bufString = getCsvLine(date, stream, len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize)
 			case "sql":
-				bufString = getSqlLine(date, stream, countUniqueIPs, len(details.IPs), details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize)
+				bufString = getSqlLine(date, stream, len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize)
 			default:
 				return fmt.Errorf("Invalid output format %s, valid format are csv and sql.", format)
 			}
@@ -151,7 +164,7 @@ func parseFiles(folder string, output string, format string) error {
 	return nil
 }
 
-func parseFile(file string, c chan VideoStats) error {
+func parseFile(file string, c chan VideoStat) error {
 	// Create new reader to decompress gzip.
 	f, err := os.Open(file)
 	if err != nil {
@@ -178,7 +191,7 @@ func parseFile(file string, c chan VideoStats) error {
 	return nil
 }
 
-func parseLine(line string, c chan VideoStats) {
+func parseLine(line string, c chan VideoStat) {
 	toks := strings.Split(line, "\t")
 
 	if len(toks) < 17 {
@@ -197,6 +210,7 @@ func parseLine(line string, c chan VideoStats) {
 	streamId, err := getStreamId(url)
 	if err != nil {
 		log.Printf("Warning: invalid URL format: '%s'", url)
+		return
 	}
 
 	if verbose {
@@ -217,11 +231,11 @@ func parseLine(line string, c chan VideoStats) {
 	if err != nil {
 		log.Printf("Error: invalid int conversion format: '%s'", fileSize)
 	}
-	var tempVideoStat VideoStats
+	var tempVideoStat VideoStat
 	tempVideoStat.IP = ip
-	tempVideoStat.TotalFilesize = fileSizeInt
-	tempVideoStat.TotalCsBytes = csBytesInt
-	tempVideoStat.TotalScyBytes = scBytesInt
+	tempVideoStat.Filesize = fileSizeInt
+	tempVideoStat.CsBytes = csBytesInt
+	tempVideoStat.ScyBytes = scBytesInt
 	tempVideoStat.date = date
 	tempVideoStat.streamId = streamId
 
@@ -307,4 +321,13 @@ func getSqlHeader() string {
 		total_sc_bytes integer,
 		total_file_size integer
 	 );`
+}
+
+func find(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
 }
