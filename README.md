@@ -34,12 +34,12 @@ Examples:
 ### Insert
 Usage of insert:
 
-- db (string): Database name
 - filepath (string): Path to the file containing the query to execute.
 - host (string): PostgreSQL host. (default value: localhost) (default "localhost")
-- password (string): Database password
 - port (int): PostgreSQL port. (default value: 5432) (default 5432)
 - user (string): Database username
+- password (string): Database password
+- db (string): Database name
 - verbose (bool)
 
 Examples:
