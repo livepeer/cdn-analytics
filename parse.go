@@ -216,8 +216,8 @@ func parseLine(line string, c chan VideoStat) {
 		return
 	}
 
-	if verbose {
-		//log.Printf("%s %s %s %s %s %s", date, ip, fileSize, csBytes, scBytes, streamId)
+	if date == "" || streamId == "" {
+		log.Printf("Warning: Invalid line: %s", line)
 	}
 
 	csBytesInt, err := strconv.ParseInt(csBytes, 10, 64)
