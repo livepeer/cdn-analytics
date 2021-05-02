@@ -94,6 +94,8 @@ func parseFiles(folder string, output string, format string) error {
 			if arrDetails[chainVideoStat.date][chainVideoStat.streamId] != nil {
 				if !find(arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs, chainVideoStat.IP) {
 					tempVideoStat.IPs = append(arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs, chainVideoStat.IP)
+				} else {
+					tempVideoStat.IPs = arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs
 				}
 				tempVideoStat.Count = arrDetails[chainVideoStat.date][chainVideoStat.streamId].Count + 1
 				tempVideoStat.TotalFilesize = arrDetails[chainVideoStat.date][chainVideoStat.streamId].TotalFilesize + chainVideoStat.Filesize
@@ -141,6 +143,7 @@ func parseFiles(folder string, output string, format string) error {
 	for date, val := range arrDetails {
 		for stream, details := range val {
 
+			log.Printf("%+v", details)
 			bufString := ""
 			switch format {
 			case "csv":
@@ -209,7 +212,7 @@ func parseLine(line string, c chan VideoStat) {
 	url := toks[14]
 	streamId, err := getStreamId(url)
 	if err != nil {
-		log.Printf("Warning: invalid URL format: '%s'", url)
+		log.Printf("Warning: invalid URL format: '%s'.", url)
 		return
 	}
 
@@ -246,9 +249,23 @@ func parseLine(line string, c chan VideoStat) {
 
 func getStreamId(url string) (string, error) {
 	toks := strings.Split(url, "/")
-	if len(toks) < 4 {
+	lenght := len(toks)
+	if lenght < 4 && lenght > 5 {
 		return "", errors.New("invalid URL format")
 	}
+
+	if toks[1] != "hls" {
+		return "", errors.New("invalid URL format - url should stsrts with /hls/")
+	}
+
+	if lenght == 4 && toks[3] != "index.m3u8" {
+		return "", errors.New("invalid URL format - url not ending with index.m3u8")
+	}
+
+	if lenght == 5 && toks[4] != "index.m3u8" && !strings.HasSuffix(toks[4], ".ts") {
+		return "", errors.New("invalid URL format -  url not ending with index.m3u8 or .ts")
+	}
+
 	return toks[2], nil
 }
 
