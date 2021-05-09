@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/pkg/profile"
 )
 
 type VideoStats struct {
@@ -24,10 +26,12 @@ type VideoStats struct {
 type VideoStat struct {
 	date     string
 	streamId string
+	itemType string
 	IP       string
 	Filesize int64
 	CsBytes  int64
 	ScyBytes int64
+	httpCode string
 }
 
 const (
@@ -55,7 +59,9 @@ func validateParseParameters(folder string, output string, format string) error 
 }
 
 func parseFiles(folder string, output string, format string) error {
-	arrDetails := make(map[string]map[string]*VideoStats)
+	defer profile.Start(profile.MemProfile).Stop()
+
+	arrDetails := make(map[string]map[string]map[string]map[string]*VideoStats)
 	// get file list
 	var wg sync.WaitGroup
 	c := make(chan VideoStat)
@@ -66,13 +72,13 @@ func parseFiles(folder string, output string, format string) error {
 			}
 			if isValidFile(path) {
 				wg.Add(1)
-				go func(wg *sync.WaitGroup, c chan VideoStat) {
+				go func() {
 					if verbose {
 						log.Println("Parse file: ", path)
 					}
 					err = parseFile(path, c)
 					wg.Done()
-				}(&wg, c)
+				}()
 			}
 
 			if err != nil {
@@ -85,22 +91,29 @@ func parseFiles(folder string, output string, format string) error {
 	}
 	log.Println("Wait for goroutine to finish")
 
-	go func(c chan VideoStat) {
+	go func() {
 		for chainVideoStat := range c {
 			var tempVideoStat VideoStats
 			if arrDetails[chainVideoStat.date] == nil {
-				arrDetails[chainVideoStat.date] = make(map[string]*VideoStats)
+				arrDetails[chainVideoStat.date] = make(map[string]map[string]map[string]*VideoStats)
 			}
-			if arrDetails[chainVideoStat.date][chainVideoStat.streamId] != nil {
-				if !find(arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs, chainVideoStat.IP) {
-					tempVideoStat.IPs = append(arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs, chainVideoStat.IP)
+			if arrDetails[chainVideoStat.date][chainVideoStat.itemType] == nil {
+				arrDetails[chainVideoStat.date][chainVideoStat.itemType] = make(map[string]map[string]*VideoStats)
+			}
+			if arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId] == nil {
+				arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId] = make(map[string]*VideoStats)
+			}
+
+			if arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode] != nil {
+				if !find(arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].IPs, chainVideoStat.IP) {
+					tempVideoStat.IPs = append(arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].IPs, chainVideoStat.IP)
 				} else {
-					tempVideoStat.IPs = arrDetails[chainVideoStat.date][chainVideoStat.streamId].IPs
+					tempVideoStat.IPs = arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].IPs
 				}
-				tempVideoStat.Count = arrDetails[chainVideoStat.date][chainVideoStat.streamId].Count + 1
-				tempVideoStat.TotalFilesize = arrDetails[chainVideoStat.date][chainVideoStat.streamId].TotalFilesize + chainVideoStat.Filesize
-				tempVideoStat.TotalCsBytes = arrDetails[chainVideoStat.date][chainVideoStat.streamId].TotalCsBytes + chainVideoStat.CsBytes
-				tempVideoStat.TotalScyBytes = arrDetails[chainVideoStat.date][chainVideoStat.streamId].TotalScyBytes + chainVideoStat.ScyBytes
+				tempVideoStat.Count = arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].Count + 1
+				tempVideoStat.TotalFilesize = arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].TotalFilesize + chainVideoStat.Filesize
+				tempVideoStat.TotalCsBytes = arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].TotalCsBytes + chainVideoStat.CsBytes
+				tempVideoStat.TotalScyBytes = arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].TotalScyBytes + chainVideoStat.ScyBytes
 			} else {
 				tempVideoStat.IPs = []string{chainVideoStat.IP}
 				tempVideoStat.TotalFilesize = chainVideoStat.Filesize
@@ -108,10 +121,10 @@ func parseFiles(folder string, output string, format string) error {
 				tempVideoStat.TotalScyBytes = chainVideoStat.ScyBytes
 				tempVideoStat.Count = 1
 			}
-			arrDetails[chainVideoStat.date][chainVideoStat.streamId] = &tempVideoStat
+			arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode] = &tempVideoStat
 
 		}
-	}(c)
+	}()
 	wg.Wait()
 	close(c)
 	log.Println("Create output file")
@@ -141,25 +154,43 @@ func parseFiles(folder string, output string, format string) error {
 	}
 
 	for date, val := range arrDetails {
-		for stream, details := range val {
+		for itemType, val1 := range val {
+			for stream, val2 := range val1 {
+				for httpCode, details := range val2 {
+					bufString := ""
+					switch format {
+					case "csv":
+						switch itemType {
+						case "manifest_id":
+							bufString = getCsvLine(date, "", stream, "", len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize, httpCode)
+						case "stream_id":
+							bufString = getCsvLine(date, stream, "", "", len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize, httpCode)
+						case "stream_name":
+							bufString = getCsvLine(date, "", "", stream, len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize, httpCode)
+						default:
+						}
 
-			log.Printf("%+v", details)
-			bufString := ""
-			switch format {
-			case "csv":
-				bufString = getCsvLine(date, stream, len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize)
-			case "sql":
-				bufString = getSqlLine(date, stream, len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize)
-			default:
-				return fmt.Errorf("Invalid output format %s, valid format are csv and sql.", format)
+					case "sql":
+						switch itemType {
+						case "manifest_id":
+							bufString = getSqlLine(date, "", stream, "", len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize, itemType, httpCode)
+						case "stream_id":
+							bufString = getSqlLine(date, stream, "", "", len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize, itemType, httpCode)
+						case "stream_name":
+							bufString = getSqlLine(date, "", "", stream, len(details.IPs), details.Count, details.TotalCsBytes, details.TotalScyBytes, details.TotalFilesize, itemType, httpCode)
+						default:
+						}
+					default:
+						return fmt.Errorf("Invalid output format %s, valid format are csv and sql.", format)
+					}
+
+					_, err = datawriter.WriteString(bufString + "\n")
+
+					if err != nil {
+						return fmt.Errorf("failed writing line %s to file: %s", bufString, err)
+					}
+				}
 			}
-
-			_, err = datawriter.WriteString(bufString + "\n")
-
-			if err != nil {
-				return fmt.Errorf("failed writing line %s to file: %s", bufString, err)
-			}
-
 		}
 	}
 	datawriter.Flush()
@@ -205,12 +236,12 @@ func parseLine(line string, c chan VideoStat) {
 	}
 
 	date := toks[0]
-	ip := toks[3]
 	fileSize := toks[7]
 	csBytes := toks[8]
 	scBytes := toks[9]
 	url := toks[14]
-	streamId, err := getStreamId(url)
+
+	streamId, streamType, err := getStreamId(url)
 	if err != nil {
 		log.Printf("Warning: invalid URL format: '%s'.", url)
 		return
@@ -235,38 +266,48 @@ func parseLine(line string, c chan VideoStat) {
 		log.Printf("Error: invalid int conversion format: '%s'", fileSize)
 	}
 	var tempVideoStat VideoStat
-	tempVideoStat.IP = ip
+	tempVideoStat.IP = toks[3]
 	tempVideoStat.Filesize = fileSizeInt
 	tempVideoStat.CsBytes = csBytesInt
 	tempVideoStat.ScyBytes = scBytesInt
 	tempVideoStat.date = date
 	tempVideoStat.streamId = streamId
+	tempVideoStat.itemType = streamType
+	tempVideoStat.httpCode = toks[12]
 
 	c <- tempVideoStat
 
 	return
 }
 
-func getStreamId(url string) (string, error) {
+func getStreamId(url string) (string, string, error) {
 	toks := strings.Split(url, "/")
 	lenght := len(toks)
-	if lenght < 4 && lenght > 5 {
-		return "", errors.New("invalid URL format")
+	idType := ""
+	if lenght < 4 || lenght > 5 {
+		return "", "", errors.New("invalid URL format")
 	}
 
-	if toks[1] != "hls" {
-		return "", errors.New("invalid URL format - url should stsrts with /hls/")
+	switch toks[1] {
+	case "hls":
+		idType = "manifest_id"
+	case "recordings":
+		idType = "stream_id"
+	case "live":
+		idType = "manifest_id"
+	default:
+		return "", "", errors.New("invalid URL format: first token should be one of hls, recording or live")
 	}
 
-	if lenght == 4 && toks[3] != "index.m3u8" {
-		return "", errors.New("invalid URL format - url not ending with index.m3u8")
+	if !strings.HasSuffix(toks[lenght-1], ".m3u8") && !strings.HasSuffix(toks[lenght-1], ".ts") {
+		return "", "", errors.New("invalid URL format - url not ending with index.m3u8 or .ts")
 	}
 
-	if lenght == 5 && toks[4] != "index.m3u8" && !strings.HasSuffix(toks[4], ".ts") {
-		return "", errors.New("invalid URL format -  url not ending with index.m3u8 or .ts")
+	if strings.HasPrefix(toks[2], "video+") {
+		return toks[2][6:], "stream_name", nil
 	}
 
-	return toks[2], nil
+	return toks[2], idType, nil
 }
 
 func isCommentLine(line string) bool {
@@ -304,27 +345,30 @@ func countUnique(slice []string) int {
 	return len(uniqSlice)
 }
 
-func getCsvLine(date string, stream string, countUniqueIPs int, contIPs int, totalCsBytes int64, totalScyBytes int64, totalFilesize int64) string {
-	return fmt.Sprintf("%s,%s,%d,%d,%d,%d,%d", date, stream, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize)
+func getCsvLine(date string, streamId string, manifestId string, manifestName string, countUniqueIPs int, contIPs int, totalCsBytes int64, totalScyBytes int64, totalFilesize int64, httpCode string) string {
+	return fmt.Sprintf("%s,%s,%s,%s,%d,%d,%d,%d,%d, %s", date, streamId, manifestId, manifestName, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, httpCode)
 }
 
-func getSqlLine(date string, stream string, countUniqueIPs int, contIPs int, totalCsBytes int64, totalScyBytes int64, totalFilesize int64) string {
-	template := `INSERT INTO cdn_stats (id, date,stream_id,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size) 
-		VALUES ('%s', '%s', '%s', %d, %d, %d, %d, %d)
+func getSqlLine(date string, streamId string, manifestId string, streamName string, countUniqueIPs int, contIPs int, totalCsBytes int64, totalScyBytes int64, totalFilesize int64, itemType string, httpCode string) string {
+	template := `INSERT INTO cdn_stats (id, date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size, http_code) 
+		VALUES ('%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, '%s')
 		ON CONFLICT (id) DO UPDATE 
 		SET date = '%s', 
 			stream_id = '%s',
+			manifest_id = '%s',
+			stream_name = '%s',
 			unique_users = %d,
 			total_views = %d,
 			total_cs_bytes = %d,
 			total_sc_bytes = %d,
-			total_file_size = %d;`
-	id := date + "_" + stream
-	return fmt.Sprintf(template, id, date, stream, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, date, stream, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize)
+			total_file_size = %d,
+			http_code = %s;`
+	id := date + "_" + itemType + "_" + streamId + manifestId + streamName
+	return fmt.Sprintf(template, id, date, streamId, manifestId, streamName, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, httpCode, date, streamId, manifestId, streamName, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, httpCode)
 }
 
 func getCsvHeader() string {
-	return "date,stream_id,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size"
+	return "date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size, httpCode"
 }
 
 func getSqlHeader() string {
@@ -332,11 +376,14 @@ func getSqlHeader() string {
 		id text PRIMARY KEY,
 		date text,
 		stream_id text,
+		manifest_id text,
+		stream_name text,
 		unique_users integer,
 		total_views integer,
 		total_cs_bytes integer,
 		total_sc_bytes integer,
-		total_file_size integer
+		total_file_size integer,
+		http_code text
 	 );`
 }
 

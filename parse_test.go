@@ -66,14 +66,14 @@ func TestParseFiles(t *testing.T) {
 }
 func TestGetStreamId(t *testing.T) {
 	streamId := "/wp-admin/index.php"
-	id, err := getStreamId(streamId)
+	id, _, err := getStreamId(streamId)
 	if err == nil {
 		t.Errorf("%s should be an invalid stream id", streamId)
 	}
 
 	streamId = "/hls/fiolz5txbwy3smsr/0_1/index.m3u8"
 	idExpected := "fiolz5txbwy3smsr"
-	id, err = getStreamId(streamId)
+	id, _, err = getStreamId(streamId)
 	if err != nil {
 		t.Errorf("%s should be a valid stream id", streamId)
 	}
@@ -119,24 +119,26 @@ func TestCountUnique(t *testing.T) {
 	}
 }
 func TestGetCsvLine_valid(t *testing.T) {
-	template := "2021,1,1,2,3,4,5"
-	l := getCsvLine("2021", "1", 1, 2, 3, 4, 5)
+	template := "2021,1,,,1,2,3,4,5"
+	l := getCsvLine("2021", "1", "", "", 1, 2, 3, 4, 5)
 	if template != l {
 		t.Errorf("Invalid line. Expected value: %s, received value: %s", template, l)
 	}
 }
 func TestGetSqlLine_valid(t *testing.T) {
-	template := `INSERT INTO cdn_stats (id, date,stream_id,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size) 
-		VALUES ('2021_1', '2021', '1', 1, 2, 3, 4, 5)
-		ON CONFLICT (id) DO UPDATE 
-		SET date = '2021', 
+	template := `INSERT INTO cdn_stats (id, date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size)
+VALUES ('2021__1', '2021', '1', '', '', 1, 2, 3, 4, 5)
+ON CONFLICT (id) DO UPDATE
+SET date = '2021',
 			stream_id = '1',
+			manifest_id = '',
+			stream_name = '',
 			unique_users = 1,
 			total_views = 2,
 			total_cs_bytes = 3,
 			total_sc_bytes = 4,
 			total_file_size = 5;`
-	l := getSqlLine("2021", "1", 1, 2, 3, 4, 5)
+	l := getSqlLine("2021", "1", "", "", 1, 2, 3, 4, 5, "")
 	if template != l {
 		t.Errorf("Invalid line. Expected value: %s, received value: %s", template, l)
 	}
@@ -148,12 +150,14 @@ func TestGetSqlHeader_valid(t *testing.T) {
 		id text PRIMARY KEY,
 		date text,
 		stream_id text,
+		manifest_id text,
+		stream_name text,
 		unique_users integer,
 		total_views integer,
 		total_cs_bytes integer,
 		total_sc_bytes integer,
 		total_file_size integer
-	 );`
+);`
 
 	h := getSqlHeader()
 	if h != val {
@@ -162,7 +166,7 @@ func TestGetSqlHeader_valid(t *testing.T) {
 }
 
 func TestGetCsvHeader_valid(t *testing.T) {
-	val := "date,stream_id,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size"
+	val := "date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size"
 	h := getCsvHeader()
 	if h != val {
 		t.Errorf("Invalid header. Expected value: %s, received value: %s", val, h)
