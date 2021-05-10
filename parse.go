@@ -65,31 +65,6 @@ func parseFiles(folder string, output string, format string) error {
 	// get file list
 	var wg sync.WaitGroup
 	c := make(chan VideoStat)
-	err := filepath.Walk(folder,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if isValidFile(path) {
-				wg.Add(1)
-				go func() {
-					if verbose {
-						log.Println("Parse file: ", path)
-					}
-					err = parseFile(path, c)
-					wg.Done()
-				}()
-			}
-
-			if err != nil {
-				return err
-			}
-			return nil
-		})
-	if err != nil {
-		return err
-	}
-	log.Println("Wait for goroutine to finish")
 
 	go func() {
 		for chainVideoStat := range c {
@@ -122,9 +97,39 @@ func parseFiles(folder string, output string, format string) error {
 				tempVideoStat.Count = 1
 			}
 			arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode] = &tempVideoStat
-
 		}
 	}()
+
+	err := filepath.Walk(folder,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if isValidFile(path) {
+				wg.Add(1)
+				go func() {
+					if verbose {
+						log.Println("Parse file: ", path)
+					}
+					err = parseFile(path, c)
+
+					if verbose {
+						log.Println("End parse file: ", path)
+					}
+					wg.Done()
+				}()
+			}
+
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+	if err != nil {
+		return err
+	}
+	log.Println("Wait for goroutine to finish")
+
 	wg.Wait()
 	close(c)
 	log.Println("Create output file")
@@ -346,11 +351,11 @@ func countUnique(slice []string) int {
 }
 
 func getCsvLine(date string, streamId string, manifestId string, manifestName string, countUniqueIPs int, contIPs int, totalCsBytes int64, totalScyBytes int64, totalFilesize int64, httpCode string) string {
-	return fmt.Sprintf("%s,%s,%s,%s,%d,%d,%d,%d,%d, %s", date, streamId, manifestId, manifestName, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, httpCode)
+	return fmt.Sprintf("%s,%s,%s,%s,%d,%d,%d,%d,%d,%s", date, streamId, manifestId, manifestName, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, httpCode)
 }
 
 func getSqlLine(date string, streamId string, manifestId string, streamName string, countUniqueIPs int, contIPs int, totalCsBytes int64, totalScyBytes int64, totalFilesize int64, itemType string, httpCode string) string {
-	template := `INSERT INTO cdn_stats (id, date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size, http_code) 
+	template := `INSERT INTO cdn_stats (id, date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size,http_code) 
 		VALUES ('%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, '%s')
 		ON CONFLICT (id) DO UPDATE 
 		SET date = '%s', 
@@ -368,7 +373,7 @@ func getSqlLine(date string, streamId string, manifestId string, streamName stri
 }
 
 func getCsvHeader() string {
-	return "date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size, httpCode"
+	return "date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size,httpCode"
 }
 
 func getSqlHeader() string {
