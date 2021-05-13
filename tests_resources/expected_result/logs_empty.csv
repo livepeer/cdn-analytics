@@ -1,1 +1,1 @@
-date,stream_id,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size
+date,stream_id,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size,httpCode

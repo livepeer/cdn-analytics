@@ -131,6 +131,7 @@ func parseFiles(folder string, output string, format string) error {
 	log.Println("Wait for goroutine to finish")
 
 	wg.Wait()
+
 	close(c)
 	log.Println("Create output file")
 	// print results
@@ -368,7 +369,7 @@ func getSqlLine(date string, streamId string, manifestId string, streamName stri
 			total_sc_bytes = %d,
 			total_file_size = %d,
 			http_code = %s;`
-	id := date + "_" + itemType + "_" + streamId + manifestId + streamName
+	id := date + "_" + itemType + "_" + streamId + manifestId + streamName + "_" + httpCode
 	return fmt.Sprintf(template, id, date, streamId, manifestId, streamName, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, httpCode, date, streamId, manifestId, streamName, countUniqueIPs, contIPs, totalCsBytes, totalScyBytes, totalFilesize, httpCode)
 }
 
@@ -383,11 +384,11 @@ func getSqlHeader() string {
 		stream_id text,
 		manifest_id text,
 		stream_name text,
-		unique_users integer,
-		total_views integer,
-		total_cs_bytes integer,
-		total_sc_bytes integer,
-		total_file_size integer,
+		unique_users bigint,
+		total_views bigint,
+		total_cs_bytes bigint,
+		total_sc_bytes bigint,
+		total_file_size bigint,
 		http_code text
 	 );`
 }

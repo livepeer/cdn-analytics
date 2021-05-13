@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 )
 
@@ -119,17 +120,17 @@ func TestCountUnique(t *testing.T) {
 	}
 }
 func TestGetCsvLine_valid(t *testing.T) {
-	template := "2021,1,,,1,2,3,4,5"
-	l := getCsvLine("2021", "1", "", "", 1, 2, 3, 4, 5)
+	template := "2021,1,,,1,2,3,4,5,404"
+	l := getCsvLine("2021", "1", "", "", 1, 2, 3, 4, 5, "404")
 	if template != l {
 		t.Errorf("Invalid line. Expected value: %s, received value: %s", template, l)
 	}
 }
 func TestGetSqlLine_valid(t *testing.T) {
-	template := `INSERT INTO cdn_stats (id, date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size)
-VALUES ('2021__1', '2021', '1', '', '', 1, 2, 3, 4, 5)
-ON CONFLICT (id) DO UPDATE
-SET date = '2021',
+	template := `INSERT INTO cdn_stats (id, date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size,http_code)
+		VALUES ('2021__1_404', '2021', '1', '', '', 1, 2, 3, 4, 5, '404')
+		ON CONFLICT (id) DO UPDATE
+		SET date = '2021',
 			stream_id = '1',
 			manifest_id = '',
 			stream_name = '',
@@ -137,10 +138,12 @@ SET date = '2021',
 			total_views = 2,
 			total_cs_bytes = 3,
 			total_sc_bytes = 4,
-			total_file_size = 5;`
-	l := getSqlLine("2021", "1", "", "", 1, 2, 3, 4, 5, "")
-	if template != l {
-		t.Errorf("Invalid line. Expected value: %s, received value: %s", template, l)
+			total_file_size = 5,
+			http_code = 404;`
+	l := getSqlLine("2021", "1", "", "", 1, 2, 3, 4, 5, "", "404")
+	space := regexp.MustCompile(`\s+`)
+	if space.ReplaceAllString(template, " ") != space.ReplaceAllString(l, " ") {
+		t.Errorf("Invalid line. Expected value: \n%s \nreceived value: \n%s", space.ReplaceAllString(template, " "), space.ReplaceAllString(l, " "))
 	}
 
 }
@@ -152,21 +155,23 @@ func TestGetSqlHeader_valid(t *testing.T) {
 		stream_id text,
 		manifest_id text,
 		stream_name text,
-		unique_users integer,
-		total_views integer,
-		total_cs_bytes integer,
-		total_sc_bytes integer,
-		total_file_size integer
-);`
+		unique_users bigint,
+		total_views bigint,
+		total_cs_bytes bigint,
+		total_sc_bytes bigint,
+		total_file_size bigint,
+		http_code text
+	);`
 
 	h := getSqlHeader()
-	if h != val {
-		t.Errorf("Invalid header. Expected value: %s, received value: %s", val, h)
+	space := regexp.MustCompile(`\s+`)
+	if space.ReplaceAllString(h, " ") != space.ReplaceAllString(val, " ") {
+		t.Errorf("Invalid header. Expected value: \n%s, received value: \n%s,", space.ReplaceAllString(val, " "), space.ReplaceAllString(h, " "))
 	}
 }
 
 func TestGetCsvHeader_valid(t *testing.T) {
-	val := "date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size"
+	val := "date,stream_id,manifest_id,stream_name,unique_users,total_views,total_cs_bytes,total_sc_bytes,total_file_size,httpCode"
 	h := getCsvHeader()
 	if h != val {
 		t.Errorf("Invalid header. Expected value: %s, received value: %s", val, h)
