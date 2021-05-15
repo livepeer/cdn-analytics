@@ -1,8 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"io/ioutil"
+	"bufio"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,19 +34,47 @@ func TestParseFiles(t *testing.T) {
 		os.Remove("./tests_resources/out.csv")
 	}
 
-	err := parseFiles("./tests_resources/logs_empty", "./tests_resources/out.csv", "csv")
+	err := parseFiles("./tests_resources/logs_empty", "./tests_resources/out_empty.csv", "csv")
 	if err != nil {
 		t.Errorf("ParseFiles should not throw. errror: %+v", err)
 	}
 
-	if _, err := os.Stat("./tests_resources/out.csv"); os.IsNotExist(err) {
+	if _, err := os.Stat("./tests_resources/out_empty.csv"); os.IsNotExist(err) {
 		t.Errorf("ParseFile didn't create an output file")
 	}
 
-	content, _ := ioutil.ReadFile("./tests_resources/out.csv")
-	expectedContent, _ := ioutil.ReadFile("./tests_resources/expected_result/logs_empty.csv")
-	if !bytes.Equal(content, expectedContent) {
-		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, content)
+	file, _ := os.Open("./tests_resources/out_empty.csv")
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	fileExpected, _ := os.Open("./tests_resources/expected_result/logs_empty.csv")
+	defer fileExpected.Close()
+
+	var linesExpected []string
+	scannerExpected := bufio.NewScanner(fileExpected)
+	for scannerExpected.Scan() {
+		linesExpected = append(linesExpected, scannerExpected.Text())
+	}
+
+	if len(linesExpected) != len(lines) {
+		t.Errorf("Result haven't the expected number of line, expected: %d, received: %d", len(linesExpected), len(lines))
+	}
+	for _, v := range lines {
+		ok := false
+		for _, e := range linesExpected {
+			if v == e {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			t.Errorf("Result doesn't match expected result. Wrong line is: %s", v)
+		}
 	}
 
 	err = parseFiles("./tests_resources/logs", "./tests_resources/out.csv", "csv")
@@ -59,12 +86,41 @@ func TestParseFiles(t *testing.T) {
 		t.Errorf("ParseFile didn't create an output file")
 	}
 
-	content, _ = ioutil.ReadFile("./tests_resources/out.csv")
-	expectedContent, _ = ioutil.ReadFile("./tests_resources/expected_result/logs.csv")
-	if !bytes.Equal(content, expectedContent) {
-		t.Errorf("Invalid file content. Expected value: %s, received value: %s", expectedContent, content)
+	file2, _ := os.Open("./tests_resources/out.csv")
+	defer file2.Close()
+
+	var lines2 []string
+	scanner2 := bufio.NewScanner(file2)
+	for scanner2.Scan() {
+		lines2 = append(lines2, scanner2.Text())
+	}
+
+	fileExpected2, _ := os.Open("./tests_resources/expected_result/logs.csv")
+	defer fileExpected2.Close()
+
+	var linesExpected2 []string
+	scannerExpected2 := bufio.NewScanner(fileExpected2)
+	for scannerExpected2.Scan() {
+		linesExpected2 = append(linesExpected2, scannerExpected2.Text())
+	}
+
+	if len(linesExpected2) != len(lines2) {
+		t.Errorf("Result haven't the expected number of line")
+	}
+	for _, v := range lines2 {
+		ok := false
+		for _, e := range linesExpected2 {
+			if v == e {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			t.Errorf("Result doesn't match expected result. Wrong line is: %s", v)
+		}
 	}
 }
+
 func TestGetStreamId(t *testing.T) {
 	streamId := "/wp-admin/index.php"
 	id, _, err := getStreamId(streamId)

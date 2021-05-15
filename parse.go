@@ -64,9 +64,11 @@ func parseFiles(folder string, output string, format string) error {
 	arrDetails := make(map[string]map[string]map[string]map[string]*VideoStats)
 	// get file list
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	c := make(chan VideoStat)
 
 	go func() {
+		mu.Lock()
 		for chainVideoStat := range c {
 			var tempVideoStat VideoStats
 			if arrDetails[chainVideoStat.date] == nil {
@@ -98,6 +100,7 @@ func parseFiles(folder string, output string, format string) error {
 			}
 			arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode] = &tempVideoStat
 		}
+		mu.Unlock()
 	}()
 
 	err := filepath.Walk(folder,
@@ -131,8 +134,8 @@ func parseFiles(folder string, output string, format string) error {
 	log.Println("Wait for goroutine to finish")
 
 	wg.Wait()
-
 	close(c)
+
 	log.Println("Create output file")
 	// print results
 	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY, 0644)
@@ -159,6 +162,7 @@ func parseFiles(folder string, output string, format string) error {
 		return fmt.Errorf("failed writing line %s to file: %s", bufString, err)
 	}
 
+	mu.Lock()
 	for date, val := range arrDetails {
 		for itemType, val1 := range val {
 			for stream, val2 := range val1 {
@@ -199,6 +203,7 @@ func parseFiles(folder string, output string, format string) error {
 			}
 		}
 	}
+	mu.Unlock()
 	datawriter.Flush()
 
 	return nil
@@ -311,6 +316,10 @@ func getStreamId(url string) (string, string, error) {
 
 	if strings.HasPrefix(toks[2], "video+") {
 		return toks[2][6:], "stream_name", nil
+	}
+
+	if strings.HasPrefix(toks[2], "videorec+") {
+		return toks[2][9:], "manifest_id", nil
 	}
 
 	return toks[2], idType, nil
