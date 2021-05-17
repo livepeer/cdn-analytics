@@ -295,7 +295,7 @@ func getStreamId(url string) (string, string, error) {
 	toks := strings.Split(url, "/")
 	lenght := len(toks)
 	idType := ""
-	if lenght < 4 || lenght > 5 {
+	if lenght < 4 {
 		return "", "", errors.New("invalid URL format")
 	}
 
@@ -315,6 +315,10 @@ func getStreamId(url string) (string, string, error) {
 	}
 
 	if strings.HasPrefix(toks[2], "video+") {
+		if toks[3] == "hls" {
+			return toks[2][6:], "manifest_id", nil
+		}
+
 		return toks[2][6:], "stream_name", nil
 	}
 
