@@ -9,41 +9,43 @@ import (
 )
 
 func TestValidateParseParameters(t *testing.T) {
-	err := validateParseParameters("./tests_resources", "./tests_resources/out.csv", ".csv")
+	err := validateParseParameters("../../tests_resources", "../../tests_resources/out.csv", ".csv")
 	if err == nil {
 		t.Errorf(".csv is an invalid extension")
 	}
 
-	err = validateParseParameters("./test_resources", "./tests_resources/out.csv", "csv")
+	err = validateParseParameters("../../test_resources", "../../tests_resources/out.csv", "csv")
 	if err == nil {
 		t.Errorf(".test_resources is an invalid folder")
 	}
 
-	err = validateParseParameters("./tests_resources", "./test_resources/out.csv", "csv")
+	err = validateParseParameters("../../tests_resources", "../../test_resources/out.csv", "csv")
 	if err == nil {
 		t.Errorf("./test_resources/out.csv is an invalid output")
 	}
 
-	err = validateParseParameters("./tests_resources", "./tests_resources/out.csv", "csv")
+	err = validateParseParameters("../../tests_resources", "../../tests_resources/out.csv", "csv")
 	if err != nil {
 		t.Errorf("Parametes should be valid")
 	}
 }
 func TestParseFiles(t *testing.T) {
-	if _, err := os.Stat("./tests_resources/out.csv"); !os.IsNotExist(err) {
+	emptyCsvFileName := "../../tests_resources/out_empty.csv"
+	defer os.Remove(emptyCsvFileName)
+	if _, err := os.Stat("../../tests_resources/out.csv"); !os.IsNotExist(err) {
 		os.Remove("./tests_resources/out.csv")
 	}
 
-	err := parseFiles("./tests_resources/logs_empty", "./tests_resources/out_empty.csv", "csv")
+	err := parseFiles("../../tests_resources/logs_empty", emptyCsvFileName, "csv")
 	if err != nil {
 		t.Errorf("ParseFiles should not throw. errror: %+v", err)
 	}
 
-	if _, err := os.Stat("./tests_resources/out_empty.csv"); os.IsNotExist(err) {
+	if _, err := os.Stat("../../tests_resources/out_empty.csv"); os.IsNotExist(err) {
 		t.Errorf("ParseFile didn't create an output file")
 	}
 
-	file, _ := os.Open("./tests_resources/out_empty.csv")
+	file, _ := os.Open("../../tests_resources/out_empty.csv")
 	defer file.Close()
 
 	var lines []string
@@ -52,7 +54,7 @@ func TestParseFiles(t *testing.T) {
 		lines = append(lines, scanner.Text())
 	}
 
-	fileExpected, _ := os.Open("./tests_resources/expected_result/logs_empty.csv")
+	fileExpected, _ := os.Open("../../tests_resources/expected_result/logs_empty.csv")
 	defer fileExpected.Close()
 
 	var linesExpected []string
@@ -77,16 +79,16 @@ func TestParseFiles(t *testing.T) {
 		}
 	}
 
-	err = parseFiles("./tests_resources/logs", "./tests_resources/out.csv", "csv")
+	err = parseFiles("../../tests_resources/logs", "../../tests_resources/out.csv", "csv")
 	if err != nil {
 		t.Errorf("ParseFiles should not throw. errror: %+v", err)
 	}
 
-	if _, err := os.Stat("./tests_resources/out.csv"); os.IsNotExist(err) {
+	if _, err := os.Stat("../../tests_resources/out.csv"); os.IsNotExist(err) {
 		t.Errorf("ParseFile didn't create an output file")
 	}
 
-	file2, _ := os.Open("./tests_resources/out.csv")
+	file2, _ := os.Open("../../tests_resources/out.csv")
 	defer file2.Close()
 
 	var lines2 []string
@@ -95,7 +97,7 @@ func TestParseFiles(t *testing.T) {
 		lines2 = append(lines2, scanner2.Text())
 	}
 
-	fileExpected2, _ := os.Open("./tests_resources/expected_result/logs.csv")
+	fileExpected2, _ := os.Open("../../tests_resources/expected_result/logs.csv")
 	defer fileExpected2.Close()
 
 	var linesExpected2 []string
@@ -159,11 +161,11 @@ func TestIsEmptyLine(t *testing.T) {
 	}
 }
 func TestIsValidFile(t *testing.T) {
-	if isValidFile(filepath.FromSlash("./tests_resources/invalid.log")) {
+	if isValidFile(filepath.FromSlash("../../tests_resources/invalid.log")) {
 		t.Errorf("invalid.log format should be invalid")
 	}
 
-	if !(isValidFile(filepath.FromSlash("./tests_resources/valid.log.gz"))) {
+	if !(isValidFile(filepath.FromSlash("../../tests_resources/valid.log.gz"))) {
 		t.Errorf("valid.log.gz format should be valid")
 	}
 }

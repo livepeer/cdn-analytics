@@ -106,7 +106,7 @@ func TestInsertData_invalidfile(t *testing.T) {
 func TestInsertData_validfile(t *testing.T) {
 	verbose = true
 	conf, _ := validateInsertParameters("rogue.db.elephantsql.com", 5432, "itpqedrl", "BMn2AB7nbffHW84O-Mf_MRG-WZpM67fr", "itpqedrl")
-	p := filepath.FromSlash("./tests_resources/test_insert.sql")
+	p := filepath.FromSlash("../../tests_resources/test_insert.sql")
 	err := insertData(conf, p)
 	if err != nil {
 		t.Errorf("Error received: %+v\n", err)

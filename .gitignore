@@ -1,6 +1,7 @@
 download/
 test.csv
 test.sql
+/tests_resources/out_empty.csv
 
 # Binaries for programs and plugins
 *.exe
