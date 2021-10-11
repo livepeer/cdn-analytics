@@ -17,11 +17,11 @@ import (
 
 func ValidateDownloadParameters(bucketUrl string, folder string) error {
 	if len(bucketUrl) == 0 {
-		return fmt.Errorf("Bucket url cannot be null or empty")
+		return fmt.Errorf("bucket url cannot be null or empty")
 	}
 
 	if strings.HasPrefix(bucketUrl, "gs://") {
-		return fmt.Errorf("Bucket url should not include gs:// prefix. Please remove it")
+		return fmt.Errorf("bucket url should not include gs:// prefix. Please remove it")
 	}
 
 	// check if folder is a valid path
@@ -33,10 +33,16 @@ func ValidateDownloadParameters(bucketUrl string, folder string) error {
 }
 
 // listFiles lists objects within specified bucket.
-func ListAndDownloadFiles(bucket string, folder string, verbose bool) error {
+func ListAndDownloadFiles(bucket string, folder string, credsFile string, verbose bool) error {
 	// bucket := "bucket-name"
 	ctx := context.Background()
-	client, err := storage.NewClient(ctx, option.WithoutAuthentication())
+	var opts []option.ClientOption
+	if credsFile != "" {
+		opts = append(opts, option.WithCredentialsFile(credsFile))
+	} else {
+		opts = append(opts, option.WithoutAuthentication())
+	}
+	client, err := storage.NewClient(ctx, opts...)
 	if err != nil {
 		return fmt.Errorf("storage.NewClient: %v", err)
 	}
@@ -58,38 +64,44 @@ func ListAndDownloadFiles(bucket string, folder string, verbose bool) error {
 		if verbose {
 			log.Println("Download file: ", attrs.Name)
 		}
-
-		go func() error {
-			data, err := downloadFile(bucket, attrs.Name, verbose)
-			if err != nil {
-				return err
-			}
-
-			fileName := filepath.FromSlash(folder + "/" + attrs.Name)
-			dir := filepath.Dir(fileName)
-			os.MkdirAll(dir, os.ModePerm)
-			if verbose {
-				log.Printf("Writing file: %s\n\n", fileName)
-			}
-			err = ioutil.WriteFile(fileName, data, 0644)
-			if err != nil {
-				return err
-			}
-			return nil
-		}()
+		err = downloadAndSaveFile(client, bucket, attrs.Name, folder, verbose)
+		if err != nil {
+			log.Printf("Error downloading file name=%s err=%v", attrs.Name, err)
+			return err
+		}
 
 	}
 	return nil
 }
 
-// downloadFile downloads an object.
-func downloadFile(bucket string, object string, verbose bool) ([]byte, error) {
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx, option.WithoutAuthentication())
+func downloadAndSaveFile(client *storage.Client, bucket, name, folder string, verbose bool) error {
+	data, err := downloadFile(client, bucket, name, verbose)
 	if err != nil {
-		return nil, fmt.Errorf("storage.NewClient: %v", err)
+		return err
 	}
-	defer client.Close()
+
+	fileName := filepath.FromSlash(folder + "/" + name)
+	dir := filepath.Dir(fileName)
+	if verbose {
+		log.Printf("Making directory %s", dir)
+	}
+	err = os.MkdirAll(dir, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	if verbose {
+		log.Printf("Writing file: %s\n\n", fileName)
+	}
+	err = ioutil.WriteFile(fileName, data, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// downloadFile downloads an object.
+func downloadFile(client *storage.Client, bucket string, object string, verbose bool) ([]byte, error) {
+	ctx := context.Background()
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*600)
 	defer cancel()

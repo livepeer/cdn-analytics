@@ -14,7 +14,7 @@ Usage of download:
 
 Example:
 ```bash
-./cdn-log-analytics download -bucketurl lp-cdn-logs-e9u3qf432 -folder download -verbose
+./cdn-log-analytics download -bucket lp-cdn-logs-e9u3qf432 -folder download -verbose
 ```
 
 ### Analyze

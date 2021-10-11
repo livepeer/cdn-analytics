@@ -18,8 +18,9 @@ func main() {
 	// Parameter parsing
 	downloadCmd := flag.NewFlagSet("download", flag.ExitOnError)
 
-	downloadBucket := downloadCmd.String("bucketurl", "", "The url of the bucket where logs are located")
+	downloadBucket := downloadCmd.String("bucket", "", "The name of the bucket where logs are located")
 	downloadFolder := downloadCmd.String("folder", "", "The destination folder")
+	downloadCredentials := downloadCmd.String("creds", "", "File name of file with credentials")
 	downloadVerbose := downloadCmd.Bool("verbose", false, "verbose")
 
 	analyzeCmd := flag.NewFlagSet("analyze", flag.ExitOnError)
@@ -45,8 +46,8 @@ func main() {
 	switch os.Args[1] {
 
 	case "download":
-		verbose = *downloadVerbose
 		downloadCmd.Parse(os.Args[2:])
+		verbose = *downloadVerbose
 		// validate parameters
 		err := app.ValidateDownloadParameters(*downloadBucket, *downloadFolder)
 		if err != nil {
@@ -56,7 +57,8 @@ func main() {
 		log.Println("subcommand 'download'")
 		log.Println("  bucket:", *downloadBucket)
 		log.Println("  download folder:", *downloadFolder)
-		err = app.ListAndDownloadFiles(*downloadBucket, *downloadFolder, verbose)
+		log.Println("  verbose:", verbose)
+		err = app.ListAndDownloadFiles(*downloadBucket, *downloadFolder, *downloadCredentials, verbose)
 		if err != nil {
 			log.Fatal(err)
 		}
