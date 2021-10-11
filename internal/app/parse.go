@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bufio"
@@ -39,7 +39,7 @@ const (
 	topLoad        = 10
 )
 
-func validateParseParameters(folder string, output string, format string) error {
+func ValidateParseParameters(folder string, output string, format string) error {
 	// check if folder is a valid path
 	if _, err := os.Stat(folder); err != nil {
 		return fmt.Errorf("%s is an invalid path. Error: %+v", folder, err)
@@ -58,7 +58,7 @@ func validateParseParameters(folder string, output string, format string) error 
 	return nil
 }
 
-func parseFiles(folder string, output string, format string) error {
+func ParseFiles(folder string, output string, format string, verbose bool) error {
 	defer profile.Start(profile.MemProfile).Stop()
 
 	arrDetails := make(map[string]map[string]map[string]map[string]*VideoStats)
@@ -108,13 +108,13 @@ func parseFiles(folder string, output string, format string) error {
 			if err != nil {
 				return err
 			}
-			if isValidFile(path) {
+			if isValidFile(path, verbose) {
 				wg.Add(1)
 				go func() {
 					if verbose {
 						log.Println("Parse file: ", path)
 					}
-					err = parseFile(path, c)
+					err = parseFile(path, c, verbose)
 
 					if verbose {
 						log.Println("End parse file: ", path)
@@ -209,7 +209,7 @@ func parseFiles(folder string, output string, format string) error {
 	return nil
 }
 
-func parseFile(file string, c chan VideoStat) error {
+func parseFile(file string, c chan VideoStat, verbose bool) error {
 	// Create new reader to decompress gzip.
 	f, err := os.Open(file)
 	if err != nil {
@@ -227,7 +227,7 @@ func parseFile(file string, c chan VideoStat) error {
 			continue
 		}
 
-		parseLine(contents.Text(), c)
+		parseLine(contents.Text(), c, verbose)
 	}
 	f.Close()
 	if verbose {
@@ -236,7 +236,7 @@ func parseFile(file string, c chan VideoStat) error {
 	return nil
 }
 
-func parseLine(line string, c chan VideoStat) {
+func parseLine(line string, c chan VideoStat, verbose bool) {
 	toks := strings.Split(line, "\t")
 
 	if len(toks) < 17 {
@@ -337,7 +337,7 @@ func isEmptyLine(line string) bool {
 	return line == ""
 }
 
-func isValidFile(path string) bool {
+func isValidFile(path string, verbose bool) bool {
 	extension := filepath.Ext(path)
 	if verbose {
 		log.Println("extension ", extension)

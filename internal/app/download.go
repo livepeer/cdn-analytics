@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-func validateDownloadParameters(bucketUrl string, folder string) error {
+func ValidateDownloadParameters(bucketUrl string, folder string) error {
 	if len(bucketUrl) == 0 {
 		return fmt.Errorf("Bucket url cannot be null or empty")
 	}
@@ -33,7 +33,7 @@ func validateDownloadParameters(bucketUrl string, folder string) error {
 }
 
 // listFiles lists objects within specified bucket.
-func listAndDownloadFiles(bucket string, folder string) error {
+func ListAndDownloadFiles(bucket string, folder string, verbose bool) error {
 	// bucket := "bucket-name"
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx, option.WithoutAuthentication())
@@ -60,7 +60,7 @@ func listAndDownloadFiles(bucket string, folder string) error {
 		}
 
 		go func() error {
-			data, err := downloadFile(bucket, attrs.Name)
+			data, err := downloadFile(bucket, attrs.Name, verbose)
 			if err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func listAndDownloadFiles(bucket string, folder string) error {
 }
 
 // downloadFile downloads an object.
-func downloadFile(bucket string, object string) ([]byte, error) {
+func downloadFile(bucket string, object string, verbose bool) ([]byte, error) {
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx, option.WithoutAuthentication())
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"time"
+
+	"github.com/livepeer/cdn-log-analytics/internal/app"
 )
 
 var verbose = false
@@ -46,7 +48,7 @@ func main() {
 		verbose = *downloadVerbose
 		downloadCmd.Parse(os.Args[2:])
 		// validate parameters
-		err := validateDownloadParameters(*downloadBucket, *downloadFolder)
+		err := app.ValidateDownloadParameters(*downloadBucket, *downloadFolder)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -54,7 +56,7 @@ func main() {
 		log.Println("subcommand 'download'")
 		log.Println("  bucket:", *downloadBucket)
 		log.Println("  download folder:", *downloadFolder)
-		err = listAndDownloadFiles(*downloadBucket, *downloadFolder)
+		err = app.ListAndDownloadFiles(*downloadBucket, *downloadFolder, verbose)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -62,7 +64,7 @@ func main() {
 		analyzeCmd.Parse(os.Args[2:])
 		verbose = *analyzeVerbose
 		// validate parameters
-		err := validateParseParameters(*analyzeFolder, *analyzeOutput, *analyzeOutputFormat)
+		err := app.ValidateParseParameters(*analyzeFolder, *analyzeOutput, *analyzeOutputFormat)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -73,7 +75,7 @@ func main() {
 		log.Println("  outputFormat:", *analyzeOutputFormat)
 		log.Println("  verbose:", *analyzeVerbose)
 
-		err = parseFiles(*analyzeFolder, *analyzeOutput, *analyzeOutputFormat)
+		err = app.ParseFiles(*analyzeFolder, *analyzeOutput, *analyzeOutputFormat, verbose)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -82,22 +84,22 @@ func main() {
 		insertCmd.Parse(os.Args[2:])
 		verbose = *insertVerbose
 		// validate parameters
-		pgConf, err := validateInsertParameters(*insertHost, *insertPort, *insertUser, *insertPwd, *insertDb)
+		pgConf, err := app.ValidateInsertParameters(*insertHost, *insertPort, *insertUser, *insertPwd, *insertDb)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		insertCmd.Parse(os.Args[2:])
 		log.Println("subcommand 'insert'")
-		log.Println("  host:", pgConf.host)
-		log.Println("  port:", pgConf.port)
+		log.Println("  host:", pgConf.Host)
+		log.Println("  port:", pgConf.Port)
 		log.Println("  user:", *insertUser)
 		log.Println("  password:", *insertPwd)
 		log.Println("  database:", *insertDb)
 		log.Println("  file path:", *insertFile)
 		log.Println("  verbose:", *insertVerbose)
 
-		err = insertData(pgConf, *insertFile)
+		err = app.InsertData(pgConf, *insertFile, verbose)
 		if err != nil {
 			log.Fatal(err)
 		}

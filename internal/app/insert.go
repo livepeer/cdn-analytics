@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"database/sql"
@@ -10,14 +10,14 @@ import (
 )
 
 type PostgresConfig struct {
-	host     string
-	port     int
-	user     string
-	password string
-	dbname   string
+	Host     string
+	Port     int
+	User     string
+	Password string
+	Dbname   string
 }
 
-func validateInsertParameters(host string, port int, user string, pwd string, db string) (PostgresConfig, error) {
+func ValidateInsertParameters(host string, port int, user string, pwd string, db string) (PostgresConfig, error) {
 	var pgConf PostgresConfig
 	if len(user) == 0 {
 		return pgConf, fmt.Errorf("PosgreSQL username cannot be empty.")
@@ -32,17 +32,17 @@ func validateInsertParameters(host string, port int, user string, pwd string, db
 	}
 
 	pgConf = PostgresConfig{
-		host:     host,
-		port:     port,
-		user:     user,
-		password: pwd,
-		dbname:   db,
+		Host:     host,
+		Port:     port,
+		User:     user,
+		Password: pwd,
+		Dbname:   db,
 	}
 
 	return pgConf, nil
 }
 
-func insertData(pgConf PostgresConfig, file string) error {
+func InsertData(pgConf PostgresConfig, file string, verbose bool) error {
 	// connection string
 	psqlconn := getPgConnectionString(pgConf)
 
@@ -84,5 +84,5 @@ func insertData(pgConf PostgresConfig, file string) error {
 }
 
 func getPgConnectionString(pgConf PostgresConfig) string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", pgConf.host, pgConf.port, pgConf.user, pgConf.password, pgConf.dbname)
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", pgConf.Host, pgConf.Port, pgConf.User, pgConf.Password, pgConf.Dbname)
 }

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bufio"
@@ -9,22 +9,22 @@ import (
 )
 
 func TestValidateParseParameters(t *testing.T) {
-	err := validateParseParameters("../../tests_resources", "../../tests_resources/out.csv", ".csv")
+	err := ValidateParseParameters("../../tests_resources", "../../tests_resources/out.csv", ".csv")
 	if err == nil {
 		t.Errorf(".csv is an invalid extension")
 	}
 
-	err = validateParseParameters("../../test_resources", "../../tests_resources/out.csv", "csv")
+	err = ValidateParseParameters("../../test_resources", "../../tests_resources/out.csv", "csv")
 	if err == nil {
 		t.Errorf(".test_resources is an invalid folder")
 	}
 
-	err = validateParseParameters("../../tests_resources", "../../test_resources/out.csv", "csv")
+	err = ValidateParseParameters("../../tests_resources", "../../test_resources/out.csv", "csv")
 	if err == nil {
 		t.Errorf("./test_resources/out.csv is an invalid output")
 	}
 
-	err = validateParseParameters("../../tests_resources", "../../tests_resources/out.csv", "csv")
+	err = ValidateParseParameters("../../tests_resources", "../../tests_resources/out.csv", "csv")
 	if err != nil {
 		t.Errorf("Parametes should be valid")
 	}
@@ -36,7 +36,7 @@ func TestParseFiles(t *testing.T) {
 		os.Remove("./tests_resources/out.csv")
 	}
 
-	err := parseFiles("../../tests_resources/logs_empty", emptyCsvFileName, "csv")
+	err := ParseFiles("../../tests_resources/logs_empty", emptyCsvFileName, "csv", false)
 	if err != nil {
 		t.Errorf("ParseFiles should not throw. errror: %+v", err)
 	}
@@ -79,7 +79,7 @@ func TestParseFiles(t *testing.T) {
 		}
 	}
 
-	err = parseFiles("../../tests_resources/logs", "../../tests_resources/out.csv", "csv")
+	err = ParseFiles("../../tests_resources/logs", "../../tests_resources/out.csv", "csv", false)
 	if err != nil {
 		t.Errorf("ParseFiles should not throw. errror: %+v", err)
 	}
@@ -161,11 +161,11 @@ func TestIsEmptyLine(t *testing.T) {
 	}
 }
 func TestIsValidFile(t *testing.T) {
-	if isValidFile(filepath.FromSlash("../../tests_resources/invalid.log")) {
+	if isValidFile(filepath.FromSlash("../../tests_resources/invalid.log"), false) {
 		t.Errorf("invalid.log format should be invalid")
 	}
 
-	if !(isValidFile(filepath.FromSlash("../../tests_resources/valid.log.gz"))) {
+	if !isValidFile(filepath.FromSlash("../../tests_resources/valid.log.gz"), false) {
 		t.Errorf("valid.log.gz format should be valid")
 	}
 }
