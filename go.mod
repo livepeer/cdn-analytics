@@ -4,9 +4,11 @@ go 1.17
 
 require (
 	cloud.google.com/go/storage v1.17.0
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/lib/pq v1.10.3
-	github.com/pkg/profile v1.6.0
+	github.com/peterbourgon/ff/v3 v3.1.2
 	google.golang.org/api v0.58.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (

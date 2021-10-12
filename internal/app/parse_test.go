@@ -36,7 +36,7 @@ func TestParseFiles(t *testing.T) {
 		os.Remove("./tests_resources/out.csv")
 	}
 
-	err := ParseFiles("../../tests_resources/logs_empty", emptyCsvFileName, "csv", false)
+	err := ParseFiles("../../tests_resources/logs_empty", emptyCsvFileName, "csv")
 	if err != nil {
 		t.Errorf("ParseFiles should not throw. errror: %+v", err)
 	}
@@ -79,7 +79,7 @@ func TestParseFiles(t *testing.T) {
 		}
 	}
 
-	err = ParseFiles("../../tests_resources/logs", "../../tests_resources/out.csv", "csv", false)
+	err = ParseFiles("../../tests_resources/logs", "../../tests_resources/out.csv", "csv")
 	if err != nil {
 		t.Errorf("ParseFiles should not throw. errror: %+v", err)
 	}
@@ -161,11 +161,11 @@ func TestIsEmptyLine(t *testing.T) {
 	}
 }
 func TestIsValidFile(t *testing.T) {
-	if isValidFile(filepath.FromSlash("../../tests_resources/invalid.log"), false) {
+	if isValidFile(filepath.FromSlash("../../tests_resources/invalid.log")) {
 		t.Errorf("invalid.log format should be invalid")
 	}
 
-	if !isValidFile(filepath.FromSlash("../../tests_resources/valid.log.gz"), false) {
+	if !isValidFile(filepath.FromSlash("../../tests_resources/valid.log.gz")) {
 		t.Errorf("valid.log.gz format should be valid")
 	}
 }

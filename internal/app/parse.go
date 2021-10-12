@@ -5,14 +5,15 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/pkg/profile"
+	"github.com/golang/glog"
+	"github.com/livepeer/cdn-log-analytics/internal/common"
+	// "github.com/pkg/profile"
 )
 
 type VideoStats struct {
@@ -34,10 +35,10 @@ type VideoStat struct {
 	httpCode string
 }
 
-const (
-	fieldSeparator = ","
-	topLoad        = 10
-)
+// const (
+// 	fieldSeparator = ","
+// 	topLoad        = 10
+// )
 
 func ValidateParseParameters(folder string, output string, format string) error {
 	// check if folder is a valid path
@@ -52,14 +53,14 @@ func ValidateParseParameters(folder string, output string, format string) error 
 	}
 
 	if !(format == "csv" || format == "sql") {
-		return fmt.Errorf("Invalid format %s. Valid format are csv and sql.", format)
+		return fmt.Errorf("invalid format %s. valid format are csv and sql", format)
 	}
 
 	return nil
 }
 
-func ParseFiles(folder string, output string, format string, verbose bool) error {
-	defer profile.Start(profile.MemProfile).Stop()
+func ParseFiles(folder string, output string, format string) error {
+	// defer profile.Start(profile.MemProfile).Stop()
 
 	arrDetails := make(map[string]map[string]map[string]map[string]*VideoStats)
 	// get file list
@@ -108,19 +109,15 @@ func ParseFiles(folder string, output string, format string, verbose bool) error
 			if err != nil {
 				return err
 			}
-			if isValidFile(path, verbose) {
+			if isValidFile(path) {
 				wg.Add(1)
 				go func() {
-					if verbose {
-						log.Println("Parse file: ", path)
-					}
-					err = parseFile(path, c, verbose)
-
-					if verbose {
-						log.Println("End parse file: ", path)
-					}
+					glog.V(common.VERBOSE).Info("Parse file: ", path)
+					err = parseFile(path, c)
+					glog.V(common.VERBOSE).Info("End parse file: ", path)
 					wg.Done()
 				}()
+				wg.Wait()
 			}
 
 			if err != nil {
@@ -131,19 +128,19 @@ func ParseFiles(folder string, output string, format string, verbose bool) error
 	if err != nil {
 		return err
 	}
-	log.Println("Wait for goroutine to finish")
+	glog.Info("Wait for goroutine to finish")
 
 	wg.Wait()
 	close(c)
 
-	log.Println("Create output file")
+	glog.V(common.DEBUG).Info("Create output file")
 	// print results
 	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY, 0644)
-	defer file.Close()
 
 	if err != nil {
 		return fmt.Errorf("failed creating file: %s", err)
 	}
+	defer file.Close()
 
 	datawriter := bufio.NewWriter(file)
 
@@ -154,7 +151,7 @@ func ParseFiles(folder string, output string, format string, verbose bool) error
 	case "sql":
 		bufString = getSqlHeader()
 	default:
-		return fmt.Errorf("Invalid output format %s, valid format are csv and sql.", format)
+		return fmt.Errorf("invalid output format %s, valid format are csv and sql", format)
 	}
 	_, err = datawriter.WriteString(bufString + "\n")
 
@@ -191,7 +188,7 @@ func ParseFiles(folder string, output string, format string, verbose bool) error
 						default:
 						}
 					default:
-						return fmt.Errorf("Invalid output format %s, valid format are csv and sql.", format)
+						return fmt.Errorf("invalid output format %s, valid format are csv and sql", format)
 					}
 
 					_, err = datawriter.WriteString(bufString + "\n")
@@ -209,7 +206,7 @@ func ParseFiles(folder string, output string, format string, verbose bool) error
 	return nil
 }
 
-func parseFile(file string, c chan VideoStat, verbose bool) error {
+func parseFile(file string, c chan VideoStat) error {
 	// Create new reader to decompress gzip.
 	f, err := os.Open(file)
 	if err != nil {
@@ -227,22 +224,18 @@ func parseFile(file string, c chan VideoStat, verbose bool) error {
 			continue
 		}
 
-		parseLine(contents.Text(), c, verbose)
+		parseLine(contents.Text(), c)
 	}
 	f.Close()
-	if verbose {
-		log.Println("End file: ", file)
-	}
+	glog.V(common.VERBOSE).Info("End file: ", file)
 	return nil
 }
 
-func parseLine(line string, c chan VideoStat, verbose bool) {
+func parseLine(line string, c chan VideoStat) {
 	toks := strings.Split(line, "\t")
 
 	if len(toks) < 17 {
-		if verbose {
-			log.Printf("Warning: line is not following the log standard. '%s'", line)
-		}
+		glog.V(common.VERBOSE).Infof("Warning: line is not following the log standard. '%s'", line)
 		return
 	}
 
@@ -254,27 +247,27 @@ func parseLine(line string, c chan VideoStat, verbose bool) {
 
 	streamId, streamType, err := getStreamId(url)
 	if err != nil {
-		log.Printf("Warning: invalid URL format: '%s'.", url)
+		glog.Warningf("Warning: invalid URL format: '%s'.", url)
 		return
 	}
 
 	if date == "" || streamId == "" {
-		log.Printf("Warning: Invalid line: %s", line)
+		glog.Warningf("Warning: Invalid line: %s", line)
 	}
 
 	csBytesInt, err := strconv.ParseInt(csBytes, 10, 64)
 	if err != nil {
-		log.Printf("Error: invalid int conversion format: '%s'", csBytes)
+		glog.Warningf("Error: invalid int conversion format: '%s'", csBytes)
 	}
 
 	scBytesInt, err := strconv.ParseInt(scBytes, 10, 64)
 	if err != nil {
-		log.Printf("Error: invalid int conversion format: '%s'", scBytes)
+		glog.Warningf("Error: invalid int conversion format: '%s'", scBytes)
 	}
 
 	fileSizeInt, err := strconv.ParseInt(fileSize, 10, 64)
 	if err != nil {
-		log.Printf("Error: invalid int conversion format: '%s'", fileSize)
+		glog.Warningf("Error: invalid int conversion format: '%s'", fileSize)
 	}
 	var tempVideoStat VideoStat
 	tempVideoStat.IP = toks[3]
@@ -287,8 +280,6 @@ func parseLine(line string, c chan VideoStat, verbose bool) {
 	tempVideoStat.httpCode = toks[12]
 
 	c <- tempVideoStat
-
-	return
 }
 
 func getStreamId(url string) (string, string, error) {
@@ -337,11 +328,9 @@ func isEmptyLine(line string) bool {
 	return line == ""
 }
 
-func isValidFile(path string, verbose bool) bool {
+func isValidFile(path string) bool {
 	extension := filepath.Ext(path)
-	if verbose {
-		log.Println("extension ", extension)
-	}
+	glog.V(common.INSANE2).Infof("extension %q", extension)
 	if extension == ".gz" {
 		return true
 	}

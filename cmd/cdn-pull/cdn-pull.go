@@ -2,32 +2,36 @@ package main
 
 import (
 	"flag"
-	"log"
+	"fmt"
 	"os"
 	"time"
+
+	"github.com/golang/glog"
+	"github.com/peterbourgon/ff/v3"
 
 	"github.com/livepeer/cdn-log-analytics/internal/app"
 )
 
-var verbose = false
-
 func main() {
+	flag.Set("logtostderr", "true")
+	vFlag := flag.Lookup("v")
+
 	// Get timestamp to measure execution time
 	start := time.Now()
 
 	// Parameter parsing
 	downloadCmd := flag.NewFlagSet("download", flag.ExitOnError)
+	downloadVerbosity := downloadCmd.String("v", "", "Log verbosity.  {4|5|6}")
 
 	downloadBucket := downloadCmd.String("bucket", "", "The name of the bucket where logs are located")
 	downloadFolder := downloadCmd.String("folder", "", "The destination folder")
 	downloadCredentials := downloadCmd.String("creds", "", "File name of file with credentials")
-	downloadVerbose := downloadCmd.Bool("verbose", false, "verbose")
 
 	analyzeCmd := flag.NewFlagSet("analyze", flag.ExitOnError)
 	analyzeFolder := analyzeCmd.String("folder", "", "Logs source folder")
 	analyzeOutput := analyzeCmd.String("output", "", "Output file path")
 	analyzeOutputFormat := analyzeCmd.String("format", "", "Output file format. It can be sql or csv")
-	analyzeVerbose := analyzeCmd.Bool("verbose", false, "verbose")
+	analyzeVerbosity := downloadCmd.String("v", "", "Log verbosity.  {4|5|6}")
 
 	insertCmd := flag.NewFlagSet("insert", flag.ExitOnError)
 	insertHost := insertCmd.String("host", "localhost", "PostgreSQL host. (default value: localhost)")
@@ -35,82 +39,96 @@ func main() {
 	insertUser := insertCmd.String("user", "", "Database username")
 	insertPwd := insertCmd.String("password", "", "Database password")
 	insertDb := insertCmd.String("db", "", "Database name")
-	insertVerbose := insertCmd.Bool("verbose", false, "verbose")
+	insertVerbosity := downloadCmd.String("v", "", "Log verbosity.  {4|5|6}")
 	insertFile := insertCmd.String("filepath", "", "Path to the file containing the query to execute.")
 
 	if len(os.Args) < 2 {
-		log.Println("expected 'download', 'analyze' or 'insert' subcommands")
+		fmt.Print("expected 'download', 'analyze' or 'insert' subcommands")
 		os.Exit(1)
 	}
 
 	switch os.Args[1] {
 
 	case "download":
-		downloadCmd.Parse(os.Args[2:])
-		verbose = *downloadVerbose
+		ff.Parse(downloadCmd, os.Args[2:],
+			ff.WithEnvVarPrefix("CP"),
+			ff.WithConfigFileFlag("config"),
+			ff.WithConfigFileParser(ff.PlainParser),
+		)
+		flag.CommandLine.Parse(nil)
+		vFlag.Value.Set(*downloadVerbosity)
+
 		// validate parameters
 		err := app.ValidateDownloadParameters(*downloadBucket, *downloadFolder)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 
-		log.Println("subcommand 'download'")
-		log.Println("  bucket:", *downloadBucket)
-		log.Println("  download folder:", *downloadFolder)
-		log.Println("  verbose:", verbose)
-		err = app.ListAndDownloadFiles(*downloadBucket, *downloadFolder, *downloadCredentials, verbose)
+		glog.Info("subcommand 'download'")
+		glog.Info("  bucket:", *downloadBucket)
+		glog.Info("  download folder:", *downloadFolder)
+		err = app.ListAndDownloadFiles(*downloadBucket, *downloadFolder, *downloadCredentials)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 	case "analyze":
-		analyzeCmd.Parse(os.Args[2:])
-		verbose = *analyzeVerbose
+		ff.Parse(analyzeCmd, os.Args[2:],
+			ff.WithEnvVarPrefix("CP"),
+			ff.WithConfigFileFlag("config"),
+			ff.WithConfigFileParser(ff.PlainParser),
+		)
+		flag.CommandLine.Parse(nil)
+		vFlag.Value.Set(*analyzeVerbosity)
+
 		// validate parameters
 		err := app.ValidateParseParameters(*analyzeFolder, *analyzeOutput, *analyzeOutputFormat)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 
-		log.Println("subcommand 'analyze'")
-		log.Println("  folder:", *analyzeFolder)
-		log.Println("  output:", *analyzeOutput)
-		log.Println("  outputFormat:", *analyzeOutputFormat)
-		log.Println("  verbose:", *analyzeVerbose)
+		glog.Info("subcommand 'analyze'")
+		glog.Info("  folder:", *analyzeFolder)
+		glog.Info("  output:", *analyzeOutput)
+		glog.Info("  outputFormat:", *analyzeOutputFormat)
 
-		err = app.ParseFiles(*analyzeFolder, *analyzeOutput, *analyzeOutputFormat, verbose)
+		err = app.ParseFiles(*analyzeFolder, *analyzeOutput, *analyzeOutputFormat)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 
 	case "insert":
-		insertCmd.Parse(os.Args[2:])
-		verbose = *insertVerbose
+		ff.Parse(insertCmd, os.Args[2:],
+			ff.WithEnvVarPrefix("CP"),
+			ff.WithConfigFileFlag("config"),
+			ff.WithConfigFileParser(ff.PlainParser),
+		)
+		flag.CommandLine.Parse(nil)
+		vFlag.Value.Set(*insertVerbosity)
 		// validate parameters
 		pgConf, err := app.ValidateInsertParameters(*insertHost, *insertPort, *insertUser, *insertPwd, *insertDb)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 
 		insertCmd.Parse(os.Args[2:])
-		log.Println("subcommand 'insert'")
-		log.Println("  host:", pgConf.Host)
-		log.Println("  port:", pgConf.Port)
-		log.Println("  user:", *insertUser)
-		log.Println("  password:", *insertPwd)
-		log.Println("  database:", *insertDb)
-		log.Println("  file path:", *insertFile)
-		log.Println("  verbose:", *insertVerbose)
+		glog.Info("subcommand 'insert'")
+		glog.Info("  host:", pgConf.Host)
+		glog.Info("  port:", pgConf.Port)
+		glog.Info("  user:", *insertUser)
+		glog.Info("  password:", *insertPwd)
+		glog.Info("  database:", *insertDb)
+		glog.Info("  file path:", *insertFile)
 
-		err = app.InsertData(pgConf, *insertFile, verbose)
+		err = app.InsertData(pgConf, *insertFile)
 		if err != nil {
-			log.Fatal(err)
+			glog.Fatal(err)
 		}
 
 	default:
-		log.Println("expected 'download', 'analyze' or 'insert' subcommands")
+		glog.Info("expected 'download', 'analyze' or 'insert' subcommands")
 		os.Exit(1)
 	}
 
 	elapsed := time.Since(start)
-	log.Printf("Execution took %s", elapsed)
+	glog.Infof("Execution took %s", elapsed)
 }

@@ -4,9 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
-	"log"
 
+	"github.com/golang/glog"
 	_ "github.com/lib/pq"
+	"github.com/livepeer/cdn-log-analytics/internal/common"
 )
 
 type PostgresConfig struct {
@@ -42,13 +43,11 @@ func ValidateInsertParameters(host string, port int, user string, pwd string, db
 	return pgConf, nil
 }
 
-func InsertData(pgConf PostgresConfig, file string, verbose bool) error {
+func InsertData(pgConf PostgresConfig, file string) error {
 	// connection string
 	psqlconn := getPgConnectionString(pgConf)
 
-	if verbose {
-		log.Println("PostgreSQL connection string: ", psqlconn)
-	}
+	glog.V(common.VERBOSE).Info("PostgreSQL connection string: ", psqlconn)
 
 	// open database
 	db, err := sql.Open("postgres", psqlconn)
@@ -65,7 +64,7 @@ func InsertData(pgConf PostgresConfig, file string, verbose bool) error {
 		return err
 	}
 
-	log.Println("Connected!")
+	glog.Info("Connected!")
 
 	c, err := ioutil.ReadFile(file)
 	if err != nil {
@@ -77,9 +76,7 @@ func InsertData(pgConf PostgresConfig, file string, verbose bool) error {
 		return err
 	}
 
-	if verbose {
-		log.Printf("SQL output: %+v", result)
-	}
+	glog.V(common.VERBOSE).Infof("SQL output: %+v", result)
 	return nil
 }
 
