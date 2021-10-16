@@ -123,43 +123,6 @@ func TestParseFiles(t *testing.T) {
 	}
 }
 
-func TestGetStreamId(t *testing.T) {
-	streamId := "/wp-admin/index.php"
-	id, _, err := getStreamId(streamId)
-	if err == nil {
-		t.Errorf("%s should be an invalid stream id", streamId)
-	}
-
-	streamId = "/hls/fiolz5txbwy3smsr/0_1/index.m3u8"
-	idExpected := "fiolz5txbwy3smsr"
-	id, _, err = getStreamId(streamId)
-	if err != nil {
-		t.Errorf("%s should be a valid stream id", streamId)
-	}
-
-	if id != idExpected {
-		t.Errorf("Invalid stream id. Expected value: %s. Received value: %s", idExpected, id)
-	}
-
-}
-func TestIsCommentLine(t *testing.T) {
-	if isCommentLine("notacomment") {
-		t.Errorf("Line should not be a comment")
-	}
-
-	if !isCommentLine("# this is a comment") {
-		t.Errorf("Line should be a comment")
-	}
-}
-func TestIsEmptyLine(t *testing.T) {
-	if isEmptyLine("_") {
-		t.Errorf("_ should not be an empty line")
-	}
-
-	if !isEmptyLine("") {
-		t.Errorf("invalid empty line")
-	}
-}
 func TestIsValidFile(t *testing.T) {
 	if isValidFile(filepath.FromSlash("../../tests_resources/invalid.log")) {
 		t.Errorf("invalid.log format should be invalid")
@@ -234,16 +197,4 @@ func TestGetCsvHeader_valid(t *testing.T) {
 	if h != val {
 		t.Errorf("Invalid header. Expected value: %s, received value: %s", val, h)
 	}
-}
-
-func TestFind(t *testing.T) {
-	slice := []string{"this", "is", "a", "test"}
-	if !find(slice, "test") {
-		t.Errorf("Invalid result. the string 'test' is included in the slice ")
-	}
-
-	if find(slice, "nottest") {
-		t.Errorf("Invalid result. the string 'nottest' isn't included in the slice ")
-	}
-
 }

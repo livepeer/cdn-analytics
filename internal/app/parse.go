@@ -3,7 +3,6 @@ package app
 import (
 	"bufio"
 	"compress/gzip"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/livepeer/cdn-log-analytics/internal/common"
+	"github.com/livepeer/cdn-log-analytics/internal/utils"
 	// "github.com/pkg/profile"
 )
 
@@ -83,7 +83,7 @@ func ParseFiles(folder string, output string, format string) error {
 			}
 
 			if arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode] != nil {
-				if !find(arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].IPs, chainVideoStat.IP) {
+				if !utils.Includes(arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].IPs, chainVideoStat.IP) {
 					tempVideoStat.IPs = append(arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].IPs, chainVideoStat.IP)
 				} else {
 					tempVideoStat.IPs = arrDetails[chainVideoStat.date][chainVideoStat.itemType][chainVideoStat.streamId][chainVideoStat.httpCode].IPs
@@ -220,7 +220,7 @@ func parseFile(file string, c chan VideoStat) error {
 
 	contents := bufio.NewScanner(reader)
 	for contents.Scan() {
-		if isCommentLine(contents.Text()) || isEmptyLine(contents.Text()) {
+		if utils.IsCommentLine(contents.Text()) || utils.IsEmptyLine(contents.Text()) {
 			continue
 		}
 
@@ -245,7 +245,7 @@ func parseLine(line string, c chan VideoStat) {
 	scBytes := toks[9]
 	url := toks[14]
 
-	streamId, streamType, err := getStreamId(url)
+	streamId, streamType, err := utils.GetStreamId(url)
 	if err != nil {
 		glog.Warningf("Warning: invalid URL format: '%s'.", url)
 		return
@@ -276,66 +276,16 @@ func parseLine(line string, c chan VideoStat) {
 	tempVideoStat.ScyBytes = scBytesInt
 	tempVideoStat.date = date
 	tempVideoStat.streamId = streamId
-	tempVideoStat.itemType = streamType
+	tempVideoStat.itemType = string(streamType)
 	tempVideoStat.httpCode = toks[12]
 
 	c <- tempVideoStat
 }
 
-func getStreamId(url string) (string, string, error) {
-	toks := strings.Split(url, "/")
-	lenght := len(toks)
-	idType := ""
-	if lenght < 4 {
-		return "", "", errors.New("invalid URL format")
-	}
-
-	switch toks[1] {
-	case "hls":
-		idType = "manifest_id"
-	case "recordings":
-		idType = "stream_id"
-	case "live":
-		idType = "manifest_id"
-	default:
-		return "", "", errors.New("invalid URL format: first token should be one of hls, recording or live")
-	}
-
-	if !strings.HasSuffix(toks[lenght-1], ".m3u8") && !strings.HasSuffix(toks[lenght-1], ".ts") {
-		return "", "", errors.New("invalid URL format - url not ending with index.m3u8 or .ts")
-	}
-
-	if strings.HasPrefix(toks[2], "video+") {
-		if toks[3] == "hls" {
-			return toks[2][6:], "manifest_id", nil
-		}
-
-		return toks[2][6:], "stream_name", nil
-	}
-
-	if strings.HasPrefix(toks[2], "videorec+") {
-		return toks[2][9:], "manifest_id", nil
-	}
-
-	return toks[2], idType, nil
-}
-
-func isCommentLine(line string) bool {
-	return strings.HasPrefix(line, "#")
-}
-
-func isEmptyLine(line string) bool {
-	return line == ""
-}
-
 func isValidFile(path string) bool {
 	extension := filepath.Ext(path)
 	glog.V(common.INSANE2).Infof("extension %q", extension)
-	if extension == ".gz" {
-		return true
-	}
-
-	return false
+	return extension == ".gz"
 }
 
 func countUnique(slice []string) int {
@@ -393,13 +343,4 @@ func getSqlHeader() string {
 		total_file_size bigint,
 		http_code text
 	 );`
-}
-
-func find(slice []string, val string) bool {
-	for _, item := range slice {
-		if item == val {
-			return true
-		}
-	}
-	return false
 }

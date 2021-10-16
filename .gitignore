@@ -21,3 +21,6 @@ test.sql
 
 # Own executables
 /cdn-pull
+
+/down
+/config.yaml

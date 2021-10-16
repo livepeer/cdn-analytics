@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"github.com/peterbourgon/ff/v3"
 
 	"github.com/livepeer/cdn-log-analytics/internal/app"
+	"github.com/livepeer/cdn-log-analytics/internal/config"
+	"github.com/livepeer/cdn-log-analytics/internal/etl"
 )
 
 func main() {
@@ -31,7 +34,7 @@ func main() {
 	analyzeFolder := analyzeCmd.String("folder", "", "Logs source folder")
 	analyzeOutput := analyzeCmd.String("output", "", "Output file path")
 	analyzeOutputFormat := analyzeCmd.String("format", "", "Output file format. It can be sql or csv")
-	analyzeVerbosity := downloadCmd.String("v", "", "Log verbosity.  {4|5|6}")
+	analyzeVerbosity := analyzeCmd.String("v", "", "Log verbosity.  {4|5|6}")
 
 	insertCmd := flag.NewFlagSet("insert", flag.ExitOnError)
 	insertHost := insertCmd.String("host", "localhost", "PostgreSQL host. (default value: localhost)")
@@ -39,15 +42,50 @@ func main() {
 	insertUser := insertCmd.String("user", "", "Database username")
 	insertPwd := insertCmd.String("password", "", "Database password")
 	insertDb := insertCmd.String("db", "", "Database name")
-	insertVerbosity := downloadCmd.String("v", "", "Log verbosity.  {4|5|6}")
+	insertVerbosity := insertCmd.String("v", "", "Log verbosity.  {4|5|6}")
 	insertFile := insertCmd.String("filepath", "", "Path to the file containing the query to execute.")
 
+	etlCmd := flag.NewFlagSet("etl", flag.ExitOnError)
+	etlVerbosity := etlCmd.String("v", "", "Log verbosity.  {4|5|6}")
+	etlBucket := etlCmd.String("bucket", "", "The name of the bucket where logs are located")
+	etlCredentials := etlCmd.String("creds", "", "File name of file with credentials")
+	etlConfig := etlCmd.String("config", "config.yaml", "Name of the config file")
+	etlStaging := etlCmd.Bool("staging", true, "Parse staging data instead of production")
+
 	if len(os.Args) < 2 {
-		fmt.Print("expected 'download', 'analyze' or 'insert' subcommands")
+		fmt.Print("expected 'etl', 'download', 'analyze' or 'insert' subcommands")
 		os.Exit(1)
 	}
 
 	switch os.Args[1] {
+	case "etl":
+		ff.Parse(etlCmd, os.Args[2:],
+			ff.WithEnvVarPrefix("CP"),
+			ff.WithConfigFileFlag("config"),
+			ff.WithConfigFileParser(ff.PlainParser),
+		)
+		flag.CommandLine.Parse(nil)
+		vFlag.Value.Set(*etlVerbosity)
+		if *etlBucket == "" {
+			glog.Fatalf("Please provide bucket name")
+		}
+		cfg, err := config.ReadConfig(*etlConfig)
+		if err != nil {
+			glog.Fatal(err)
+		}
+
+		glog.Info("subcommand 'etl'")
+		glog.Infof("  bucket: %q", *etlBucket)
+		glog.Infof("  credentials: %q", *etlCredentials)
+		glog.Infof("  config: %q", *etlConfig)
+		gctx := context.TODO()
+		etl, err := etl.NewEtl(gctx, cfg, *etlBucket, *etlCredentials, *etlStaging)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		if err = etl.Do(); err != nil {
+			glog.Fatal(err)
+		}
 
 	case "download":
 		ff.Parse(downloadCmd, os.Args[2:],
@@ -67,6 +105,7 @@ func main() {
 		glog.Info("subcommand 'download'")
 		glog.Info("  bucket:", *downloadBucket)
 		glog.Info("  download folder:", *downloadFolder)
+		glog.Info("  credentials:", *downloadCredentials)
 		err = app.ListAndDownloadFiles(*downloadBucket, *downloadFolder, *downloadCredentials)
 		if err != nil {
 			glog.Fatal(err)
@@ -125,7 +164,7 @@ func main() {
 		}
 
 	default:
-		glog.Info("expected 'download', 'analyze' or 'insert' subcommands")
+		fmt.Print("expected 'etl', 'download', 'analyze' or 'insert' subcommands")
 		os.Exit(1)
 	}
 
