@@ -40,9 +40,10 @@ type (
 	}
 
 	SendData struct {
-		Date   int64            `json:"date"` // hour in Unix epoch
-		Region string           `json:"region"`
-		Data   []*VideoStatsExt `json:"data"`
+		Date     int64            `json:"date"` // hour in Unix epoch
+		Region   string           `json:"region"`
+		FileName string           `json:"file_name"`
+		Data     []*VideoStatsExt `json:"data"`
 	}
 
 	VideoStat struct {
@@ -90,7 +91,7 @@ func (ag *aggregator) incomingDataLoop(doneC chan struct{}, c chan VideoStat) {
 		}
 		// treat all codes in the same way
 		chainVideoStat.httpCode = "200"
-		glog.Infof("~~~ inserting line for date %s stream id %s", chainVideoStat.date, chainVideoStat.streamId)
+		// glog.Infof("~~~ inserting line for date %s stream id %s", chainVideoStat.date, chainVideoStat.streamId)
 		byDate := ag.data[chainVideoStat.date]
 		if byDate == nil {
 			byDate = make(map[utils.IDType]map[string]map[string]*VideoStats)
@@ -127,13 +128,26 @@ func (ag *aggregator) incomingDataLoop(doneC chan struct{}, c chan VideoStat) {
 	doneC <- struct{}{}
 }
 
-func (ag *aggregator) flatten(region string, startHour time.Time) *SendData {
-	sd := &SendData{
-		Region: region,
-		Date:   startHour.Unix(),
+func hourToUnix(hour string) int64 {
+	tm, err := time.Parse("2006-01-0215", hour)
+	if err != nil {
+		panic(err)
 	}
+	glog.Infof("==> hour=%s parsed as %s", hour, tm)
+	return tm.Unix()
+}
+
+func (ag *aggregator) flatten(region string, startHour time.Time, lastFileName string) []*SendData {
+	var toSend []*SendData
 	for date, val := range ag.data {
 		glog.Infof("--> date: %s", date)
+		sd := &SendData{
+			Region:   region,
+			Date:     hourToUnix(date),
+			FileName: lastFileName,
+		}
+		toSend = append(toSend, sd)
+
 		for itemType, val1 := range val {
 			glog.Infof("--> item type %q", itemType)
 			for stream, val2 := range val1 {
@@ -167,7 +181,7 @@ func (ag *aggregator) flatten(region string, startHour time.Time) *SendData {
 			}
 		}
 	}
-	return sd
+	return toSend
 }
 
 const httpTimeout = 4 * time.Second
@@ -179,7 +193,7 @@ var defaultHTTPClient = &http.Client{
 	Timeout: httpTimeout,
 }
 
-func (ag *aggregator) postToAPI(data *SendData) error {
+func (ag *aggregator) postToAPI(data []*SendData) error {
 	uri := fmt.Sprintf("http://localhost:3004/api/cdn-data")
 	bin, err := json.Marshal(data)
 	if err != nil {
@@ -323,7 +337,7 @@ func parseFile(ctx context.Context, gsClient *storage.Client, bucket, file strin
 
 func parseLine(line string, c chan VideoStat) {
 	toks := strings.Split(line, "\t")
-	glog.Infof("Parsing line:%s", line)
+	// glog.Infof("Parsing line:%s", line)
 
 	if len(toks) < 17 {
 		glog.V(common.DEBUG).Infof("Warning: line is not following the log standard. line=%q", line)

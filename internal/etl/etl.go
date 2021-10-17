@@ -2,8 +2,11 @@ package etl
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -84,16 +87,19 @@ func (etl *Etl) Do() error {
 			isStagingRegion := strings.HasSuffix(regionName, "-monster")
 			if etl.staging && !isStagingRegion {
 				continue
+			} else if !etl.staging && isStagingRegion {
+				continue
 			}
 			glog.Infof("For hash %q found region %q", cleanSiteHash, regionName)
 			// etl.getGSDirs("", siteHash+"cds/")
-			startHour, err := etl.getStartHour(cleanSiteHash)
+			startHour, fullFileName, err := etl.getStartHour(cleanSiteHash, regionName)
+			glog.Infof("--> start hour %s startFile=%s", startHour, fullFileName)
 			if err != nil {
 				glog.Errorf("Error getting start hour err=%v", err)
 				continue
 			}
-			glog.V(common.DEBUG).Infof("Start hour is %s", startHour)
-			err = etl.doEtl(cleanSiteHash, startHour)
+			glog.V(common.DEBUG).Infof("Start hour is %s, start fileName=%s", startHour, fullFileName)
+			err = etl.doEtl(cleanSiteHash, startHour, fullFileName)
 			if err != nil {
 				glog.Errorf("Error processing data for siteHash=%s region=%s err=%v", cleanSiteHash, regionName, err)
 			}
@@ -106,31 +112,36 @@ func (etl *Etl) Do() error {
 
 // doEtl reads logs files that corresponds to startHour, aggregates it and
 // pushes aggreagated data to Livepeer API
-func (etl *Etl) doEtl(siteHash string, startHour time.Time) error {
+func (etl *Etl) doEtl(siteHash string, startHour time.Time, startFile string) error {
 	for {
 		endHour := startHour.Add(aggregationDuration)
 		if endHour.After(time.Now()) {
 			break
 		}
-		err := etl.doEtlHour(siteHash, startHour)
-		if err != nil {
+		err := etl.doEtlHour(siteHash, startHour, startFile)
+		if err != nil && err != errEmpty {
 			return err
 		}
+		startFile = ""
 		startHour = startHour.Add(aggregationDuration)
 		// break
 	}
 	return nil
 }
 
-func (etl *Etl) doEtlHour(siteHash string, startHour time.Time) error {
+func (etl *Etl) doEtlHour(siteHash string, startHour time.Time, startFile string) error {
 	regionName := etl.cfg.Names[siteHash]
 	endHour := startHour.Add(aggregationDuration)
 	started := time.Now()
-	glog.Infof("Start processing data for hash=%s region=%s startHour=%s endHour=%s", siteHash, regionName, startHour, endHour)
+	glog.Infof("Start processing data for hash=%s region=%s startHour=%s endHour=%s startFile=%s", siteHash, regionName, startHour, endHour, startFile)
 	// get list of all files that needs to be processed
 	query := storage.Query{
-		StartOffset: constructFileNameFromTime(siteHash, startHour),
-		EndOffset:   constructFileNameFromTime(siteHash, endHour),
+		EndOffset: constructFileNameFromTime(siteHash, endHour),
+	}
+	if startFile != "" {
+		query.StartOffset = startFile
+	} else {
+		query.StartOffset = constructFileNameFromTime(siteHash, startHour)
 	}
 	glog.V(common.INSANE).Infof("Query %+v", query)
 	_, fileNames, err := etl.getGSDirsWithQuery(&query, -1)
@@ -138,22 +149,25 @@ func (etl *Etl) doEtlHour(siteHash string, startHour time.Time) error {
 		return err
 	}
 	if len(fileNames) == 0 {
-		return fmt.Errorf("no logs files found for hash=%s region=%s startHour=%s", siteHash, regionName, startHour)
+		glog.Errorf("no logs files found for hash=%s region=%s startHour=%s", siteHash, regionName, startHour)
+		return errEmpty
 	}
 	glog.V(common.INSANE).Infof("Got files=%+v", fileNames)
 	// now check that there is logs files exists in the next hour
 	// (to make sure that all the files for startHour made their was to GS)
-	query = storage.Query{
-		StartOffset: constructFileNameFromTime(siteHash, endHour),
-	}
-	glog.V(common.INSANE).Infof("Query %+v", query)
-	_, endHourFileNames, err := etl.getGSDirsWithQuery(&query, 1)
-	if err != nil {
-		return err
-	}
-	if len(endHourFileNames) == 0 {
-		return fmt.Errorf("no logs files found for hour=%s", endHour)
-	}
+	/*
+		query = storage.Query{
+			StartOffset: constructFileNameFromTime(siteHash, endHour),
+		}
+		glog.V(common.INSANE).Infof("Query %+v", query)
+		_, endHourFileNames, err := etl.getGSDirsWithQuery(&query, 1)
+		if err != nil {
+			return err
+		}
+		if len(endHourFileNames) == 0 {
+			return fmt.Errorf("no logs files found for hour=%s", endHour)
+		}
+	*/
 	agg := newAggregator(etl.ctx, etl.gsClient, etl.bucket)
 
 	datac := make(chan VideoStat)
@@ -177,7 +191,7 @@ func (etl *Etl) doEtlHour(siteHash string, startHour time.Time) error {
 	glog.Infof("Extract and transform of bucket=%s region=%s hour=%s complete in %s other traffic=%d bytes.",
 		etl.bucket, regionName, startHour, time.Since(started), agg.otherTraffic)
 	// agg.aggregate(regionName)
-	export := agg.flatten(regionName, startHour)
+	export := agg.flatten(regionName, startHour, fileNames[len(fileNames)-1])
 	if err = agg.postToAPI(export); err != nil {
 		glog.Errorf("Error posting data to api region=%s hour=%s err=%v", regionName, startHour, err)
 	}
@@ -189,46 +203,101 @@ func constructFileNameFromTime(siteHash string, tm time.Time) string {
 	return fmt.Sprintf("%s/cds/%s", siteHash, tm.Format("2006/01/02/cds_20060102-150405"))
 }
 
-func (etl *Etl) getStartHour(siteHash string) (time.Time, error) {
-	const askedAPI = false
-	if askedAPI {
-		// todo: get last processed hour from API, add one hour
-		return time.Now(), nil
-	}
-	ts, err := etl.getTimestampFromFirstFile(siteHash)
-	if err != nil {
-		return time.Now(), err
-	}
-	return ts.Truncate(aggregationDuration), nil
+type regionResp struct {
+	FileName string `json:"fileName,omitempty"`
+	Region   string `json:"region,omitempty"`
 }
 
-func (etl *Etl) getTimestampFromFirstFile(siteHash string) (time.Time, error) {
+func (etl *Etl) getFileFromAPI(region string) (string, error) {
+	uri := fmt.Sprintf("http://localhost:3004/api/cdn-data/region/%s", region)
+
+	req, err := http.NewRequest("GET", uri, nil)
+	if err != nil {
+		return "", err
+	}
+	// req.Header.Add("Authorization", "Bearer "+lapi.accessToken)
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := defaultHTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	bin, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	glog.Infof("Get region get response=%s", string(bin))
+	if resp.StatusCode == http.StatusNoContent {
+		return "", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		panic("stop")
+	}
+	rr := &regionResp{}
+	if err = json.Unmarshal(bin, rr); err != nil {
+		return "", err
+	}
+	return rr.FileName, nil
+}
+
+func (etl *Etl) getStartHour(siteHash, regionName string) (time.Time, string, error) {
+	fullFileName, err := etl.getFileFromAPI(regionName)
+	if err != nil {
+		glog.Errorf("Error contacting API err=%v", err)
+		var tz time.Time
+		return tz, "", err
+	}
+	if fullFileName != "" {
+		tm, fileName, err := getTimeFromFullFileName(fullFileName, regionName)
+		glog.V(common.DEBUG).Infof("Got from API for region=%s fileName=%s time=%s", regionName, fileName, tm)
+		// if err != nil {
+		return tm.Truncate(aggregationDuration), fullFileName, err
+		// }
+	}
+	ts, fullFileName, err := etl.getTimestampFromFirstFile(siteHash)
+	if err != nil {
+		return time.Now(), "", err
+	}
+	return ts.Truncate(aggregationDuration), fullFileName, nil
+}
+
+func getTimeFromFullFileName(fullFileName, siteHash string) (time.Time, string, error) {
+	_, fileName := filepath.Split(fullFileName)
+	glog.Infof("Got first file for site %s file %s (name=%s)", siteHash, fullFileName, fileName)
+	fileName = strings.TrimPrefix(fileName, "cds_")
+	fnp := strings.Split(fileName, "-")
+	var tm time.Time
+	var err error
+	if len(fnp) < 2 {
+		return tm, fileName, errors.New("invalid file name")
+	}
+
+	tm, err = time.Parse("20060102150405", fnp[0]+fnp[1])
+	return tm, fileName, err
+
+}
+
+func (etl *Etl) getTimestampFromFirstFile(siteHash string) (time.Time, string, error) {
 	_, fns, err := etl.getGSDirsWithLimit("", siteHash+"/cds/", 1)
 	rt := time.Now()
 	if err != nil {
-		return rt, err
+		return rt, "", err
 	}
 	if len(fns) != 1 {
-		return rt, errEmpty
+		return rt, "", errEmpty
 	}
-	_, fileName := filepath.Split(fns[0])
-	glog.Infof("Got first file for site %s file %s (name=%s)", siteHash, fns[0], fileName)
-	fileName = strings.TrimPrefix(fileName, "cds_")
-	fnp := strings.Split(fileName, "-")
-	if len(fnp) < 2 {
-		return rt, errors.New("invalid file name")
-	}
+	fullFileName := fns[0]
+	tm, fileName, err := getTimeFromFullFileName(fullFileName, siteHash)
 
-	tm, err := time.Parse("20060102150405", fnp[0]+fnp[1])
 	if err != nil {
-		return rt, err
+		return rt, fullFileName, err
 	}
 	glog.V(common.VVERBOSE).Infof("From fileName=%s parsed time=%s", fileName, tm)
 	// var re1 *regexp.Regexp = regexp.MustCompile(`cds_(\d{4})20210828-222(w\d+)_`)
 	// ms1 := re1.FindStringSubmatch(fileName)
 	// glog.Infof("Got regexp matches: %+v", ms1)
 
-	return tm, nil
+	return tm, fullFileName, nil
 }
 
 func (etl *Etl) getGSDirs(delimiter, prefix string) ([]string, []string, error) {
