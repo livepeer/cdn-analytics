@@ -209,7 +209,7 @@ func (ag *aggregator) postToAPI(data []*SendData) error {
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := defaultHTTPClient.Do(req)
 	if err != nil {
-		panic("stop1")
+		panic("stop1: " + err.Error())
 		return err
 	}
 	defer resp.Body.Close()
