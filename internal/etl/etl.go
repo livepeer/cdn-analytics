@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,6 +20,10 @@ import (
 	"google.golang.org/api/option"
 )
 
+var (
+	ErrForbidden = errors.New("forbidden")
+)
+
 const (
 	aggregationDuration = time.Hour
 	numParralelReaders  = 10
@@ -29,11 +34,13 @@ type (
 	// aggregates them by hour and sends to Livepeer API
 	// to be put into database
 	Etl struct {
-		ctx      context.Context
-		cfg      *config.Config
-		gsClient *storage.Client
-		bucket   string
-		staging  bool
+		ctx            context.Context
+		cfg            *config.Config
+		gsClient       *storage.Client
+		bucket         string
+		staging        bool
+		livepeerAPIKey string
+		livepeerAPIUrl string
 	}
 )
 
@@ -41,7 +48,9 @@ var (
 	errEmpty = errors.New("empty")
 )
 
-func NewEtl(ctx context.Context, cfg *config.Config, bucket, credentials string, staging bool) (*Etl, error) {
+func NewEtl(ctx context.Context, cfg *config.Config, bucket, credentials string, staging bool,
+	livepeerAPIKey string, livepeerAPIUrl *url.URL) (*Etl, error) {
+
 	var opts []option.ClientOption
 	if credentials != "" {
 		opts = append(opts, option.WithCredentialsFile(credentials))
@@ -62,13 +71,17 @@ func NewEtl(ctx context.Context, cfg *config.Config, bucket, credentials string,
 	if _, err = it.Next(); err != nil {
 		return nil, err
 	}
+	livepeerAPIUrl.Path = ""
+	lau := livepeerAPIUrl.String()
 
 	etl := &Etl{
-		ctx:      ctx,
-		bucket:   bucket,
-		gsClient: client,
-		cfg:      cfg,
-		staging:  staging,
+		ctx:            ctx,
+		bucket:         bucket,
+		gsClient:       client,
+		cfg:            cfg,
+		staging:        staging,
+		livepeerAPIKey: livepeerAPIKey,
+		livepeerAPIUrl: lau,
 	}
 	return etl, nil
 }
@@ -80,7 +93,6 @@ func (etl *Etl) Do() error {
 		return err
 	}
 	glog.V(common.VVERBOSE).Infof("Got top dirs in GS: %+v", topDirs)
-	glog.Infof("=>> fi %s", cleanLastSlash(topDirs[0]))
 	for _, siteHash := range topDirs {
 		cleanSiteHash := cleanLastSlash(siteHash)
 		if regionName, ok := etl.cfg.Names[cleanSiteHash]; ok {
@@ -93,15 +105,21 @@ func (etl *Etl) Do() error {
 			glog.Infof("For hash %q found region %q", cleanSiteHash, regionName)
 			// etl.getGSDirs("", siteHash+"cds/")
 			startHour, fullFileName, err := etl.getStartHour(cleanSiteHash, regionName)
-			glog.Infof("--> start hour %s startFile=%s", startHour, fullFileName)
+			glog.V(common.INSANE).Infof("--> start hour %s startFile=%s", startHour, fullFileName)
+			if err == ErrForbidden {
+				return err
+			}
+
 			if err != nil {
 				glog.Errorf("Error getting start hour err=%v", err)
-				continue
+				return err
+				// continue
 			}
 			glog.V(common.DEBUG).Infof("Start hour is %s, start fileName=%s", startHour, fullFileName)
 			err = etl.doEtl(cleanSiteHash, startHour, fullFileName)
 			if err != nil {
 				glog.Errorf("Error processing data for siteHash=%s region=%s err=%v", cleanSiteHash, regionName, err)
+				return err
 			}
 			// break
 		}
@@ -168,7 +186,7 @@ func (etl *Etl) doEtlHour(siteHash string, startHour time.Time, startFile string
 			return fmt.Errorf("no logs files found for hour=%s", endHour)
 		}
 	*/
-	agg := newAggregator(etl.ctx, etl.gsClient, etl.bucket)
+	agg := newAggregator(etl.ctx, etl.gsClient, etl.bucket, etl.livepeerAPIKey, etl.livepeerAPIUrl)
 
 	datac := make(chan VideoStat)
 	filesChan := make(chan string, 32)
@@ -191,12 +209,16 @@ func (etl *Etl) doEtlHour(siteHash string, startHour time.Time, startFile string
 	glog.Infof("Extract and transform of bucket=%s region=%s hour=%s complete in %s other traffic=%d bytes.",
 		etl.bucket, regionName, startHour, time.Since(started), agg.otherTraffic)
 	// agg.aggregate(regionName)
+	glog.V(common.DEBUG).Infof("Parsed %d days (%+v)", len(agg.data), agg.data)
+	if len(agg.data) == 0 {
+		return nil
+	}
 	export := agg.flatten(regionName, startHour, fileNames[len(fileNames)-1])
 	if err = agg.postToAPI(export); err != nil {
 		glog.Errorf("Error posting data to api region=%s hour=%s err=%v", regionName, startHour, err)
 	}
 
-	return nil
+	return err
 }
 
 func constructFileNameFromTime(siteHash string, tm time.Time) string {
@@ -209,13 +231,13 @@ type regionResp struct {
 }
 
 func (etl *Etl) getFileFromAPI(region string) (string, error) {
-	uri := fmt.Sprintf("http://localhost:3004/api/cdn-data/region/%s", region)
+	uri := fmt.Sprintf("%s/api/cdn-data/region/%s", etl.livepeerAPIUrl, region)
 
 	req, err := http.NewRequest("GET", uri, nil)
 	if err != nil {
 		return "", err
 	}
-	// req.Header.Add("Authorization", "Bearer "+lapi.accessToken)
+	req.Header.Add("Authorization", "Bearer "+etl.livepeerAPIKey)
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := defaultHTTPClient.Do(req)
 	if err != nil {
@@ -231,6 +253,9 @@ func (etl *Etl) getFileFromAPI(region string) (string, error) {
 		return "", nil
 	}
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusForbidden {
+			return "", ErrForbidden
+		}
 		panic("stop")
 	}
 	rr := &regionResp{}

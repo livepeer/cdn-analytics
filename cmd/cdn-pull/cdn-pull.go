@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
@@ -51,6 +52,8 @@ func main() {
 	etlCredentials := etlCmd.String("creds", "", "File name of file with credentials")
 	etlConfig := etlCmd.String("config", "config.yaml", "Name of the config file")
 	etlStaging := etlCmd.Bool("staging", true, "Parse staging data instead of production")
+	etlApiKey := etlCmd.String("api-key", "", "Livepeer API key")
+	etlApiUrl := etlCmd.String("api-url", "", "Livepeer API URL")
 
 	if len(os.Args) < 2 {
 		fmt.Print("expected 'etl', 'download', 'analyze' or 'insert' subcommands")
@@ -69,6 +72,18 @@ func main() {
 		if *etlBucket == "" {
 			glog.Fatalf("Please provide bucket name")
 		}
+		if *etlApiKey == "" {
+			glog.Fatalf("Please provide Livepeer API key")
+		}
+		if *etlApiUrl == "" {
+			glog.Fatalf("Please provide Livepeer API URL")
+		}
+		apiUrl, err := url.ParseRequestURI(*etlApiUrl)
+		if err != nil {
+			glog.Errorf("Invalid Livepeer API URL: %v", err)
+			os.Exit(9)
+		}
+
 		cfg, err := config.ReadConfig(*etlConfig)
 		if err != nil {
 			glog.Fatal(err)
@@ -79,11 +94,15 @@ func main() {
 		glog.Infof("  credentials: %q", *etlCredentials)
 		glog.Infof("  config: %q", *etlConfig)
 		gctx := context.TODO()
-		etl, err := etl.NewEtl(gctx, cfg, *etlBucket, *etlCredentials, *etlStaging)
+		etli, err := etl.NewEtl(gctx, cfg, *etlBucket, *etlCredentials, *etlStaging, *etlApiKey, apiUrl)
 		if err != nil {
 			glog.Fatal(err)
 		}
-		if err = etl.Do(); err != nil {
+		if err = etli.Do(); err != nil {
+			if err == etl.ErrForbidden {
+				glog.Errorf("Wrong Livepeer API key ")
+				os.Exit(10)
+			}
 			glog.Fatal(err)
 		}
 

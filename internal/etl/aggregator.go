@@ -58,23 +58,29 @@ type (
 	}
 
 	aggregator struct {
-		ctx          context.Context
-		cancel       context.CancelFunc
-		gsClient     *storage.Client
-		bucket       string
-		data         map[string]map[utils.IDType]map[string]map[string]*VideoStats
-		otherTraffic int64 // traffic sent from CDN to clients not related to video streaming
+		ctx            context.Context
+		cancel         context.CancelFunc
+		gsClient       *storage.Client
+		bucket         string
+		data           map[string]map[utils.IDType]map[string]map[string]*VideoStats
+		otherTraffic   int64 // traffic sent from CDN to clients not related to video streaming
+		livepeerAPIKey string
+		livepeerAPIUrl string
 	}
 )
 
-func newAggregator(gctx context.Context, gsClient *storage.Client, bucket string) *aggregator {
+func newAggregator(gctx context.Context, gsClient *storage.Client, bucket,
+	livepeerAPIKey, livepeerAPIUrl string) *aggregator {
+
 	ctx, cancel := context.WithCancel(gctx)
 	return &aggregator{
-		ctx:      ctx,
-		cancel:   cancel,
-		gsClient: gsClient,
-		bucket:   bucket,
-		data:     make(map[string]map[utils.IDType]map[string]map[string]*VideoStats), // date:IdType:streamId:httpCode
+		ctx:            ctx,
+		cancel:         cancel,
+		gsClient:       gsClient,
+		bucket:         bucket,
+		data:           make(map[string]map[utils.IDType]map[string]map[string]*VideoStats), // date:IdType:streamId:httpCode
+		livepeerAPIKey: livepeerAPIKey,
+		livepeerAPIUrl: livepeerAPIUrl,
 	}
 }
 
@@ -181,11 +187,11 @@ func (ag *aggregator) flatten(region string, startHour time.Time, lastFileName s
 			}
 		}
 	}
+	glog.V(common.DEBUG).Infof("flatten toSend=%+v", toSend)
 	return toSend
 }
 
 const httpTimeout = 4 * time.Second
-const setActiveTimeout = 1500 * time.Millisecond
 
 var defaultHTTPClient = &http.Client{
 	// Transport: &http2.Transport{TLSClientConfig: tlsConfig},
@@ -194,22 +200,22 @@ var defaultHTTPClient = &http.Client{
 }
 
 func (ag *aggregator) postToAPI(data []*SendData) error {
-	uri := fmt.Sprintf("http://localhost:3004/api/cdn-data")
+	uri := fmt.Sprintf("%s/api/cdn-data", ag.livepeerAPIUrl)
 	bin, err := json.Marshal(data)
 	if err != nil {
 		glog.Errorf("Error mashalling SendData err=%v", err)
 		return err
 	}
+	glog.V(common.INSANE2).Infof("Posting data=%s", string(bin))
 
 	req, err := http.NewRequest("POST", uri, bytes.NewBuffer(bin))
 	if err != nil {
 		return err
 	}
-	// req.Header.Add("Authorization", "Bearer "+lapi.accessToken)
+	req.Header.Add("Authorization", "Bearer "+ag.livepeerAPIKey)
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := defaultHTTPClient.Do(req)
 	if err != nil {
-		panic("stop1: " + err.Error())
 		return err
 	}
 	defer resp.Body.Close()
@@ -219,7 +225,11 @@ func (ag *aggregator) postToAPI(data []*SendData) error {
 	}
 	glog.Infof("SendData post response=%s", string(bin))
 	if resp.StatusCode != http.StatusOK {
-		panic("stop")
+		glog.Errorf("Response from the API /cdn-data code=%v status=%s", resp.StatusCode, resp.Status)
+		if resp.StatusCode == http.StatusForbidden {
+			return ErrForbidden
+		}
+		return fmt.Errorf("error sending data status=%s", resp.Status)
 	}
 	return nil
 }
