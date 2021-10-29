@@ -32,7 +32,7 @@ type (
 	VideoStatsExt struct {
 		StreamID      string `json:"stream_id"`
 		PlaybackID    string `json:"playback_id"`
-		UniqueUsers   int    `json:"unique_users"`
+		UniqueUsers   int    `json:"unique_client_ips"`
 		TotalFilesize int64  `json:"total_filesize"`
 		TotalCsBytes  int64  `json:"total_cs_bytes"`
 		TotalScBytes  int64  `json:"total_sc_bytes"`
