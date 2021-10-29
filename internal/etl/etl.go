@@ -1,6 +1,8 @@
 package etl
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -86,6 +88,30 @@ func NewEtl(ctx context.Context, cfg *config.Config, bucket, credentials string,
 	return etl, nil
 }
 
+// used for debugging
+func (etl *Etl) printFile(file string) {
+	fmt.Printf("Printing file %s\n", file)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*600)
+	defer cancel()
+	rc, err := etl.gsClient.Bucket(etl.bucket).Object(file).NewReader(ctx)
+	if err != nil {
+		panic(fmt.Errorf("Object(%q).NewReader: %v", file, err))
+	}
+	defer rc.Close()
+
+	reader, err := gzip.NewReader(rc)
+	if err != nil {
+		panic(err)
+	}
+	defer reader.Close()
+
+	contents := bufio.NewScanner(reader)
+	for contents.Scan() {
+		line := contents.Text()
+		fmt.Println(line)
+	}
+}
+
 func (etl *Etl) Do() error {
 	// list top-level dirs. Each dir corresponds to StackPath's 'site'
 	topDirs, _, err := etl.getGSDirs("/", "")
@@ -93,6 +119,22 @@ func (etl *Etl) Do() error {
 		return err
 	}
 	glog.V(common.VVERBOSE).Infof("Got top dirs in GS: %+v", topDirs)
+	/*
+		glog.Infof("\n%s", strings.Join(topDirs, "\n"))
+		// tempDirs, tempFiles, err := etl.getGSDirs("/", "k3c3y8z2/")
+		// tempDirs, tempFiles, err := etl.getGSDirs("/", "k3c3y8z2/cds/2021/10/24/")
+		tempDirs, tempFiles, err := etl.getGSDirs("/", "t8a6c4p8/cds/2021/10/24/")
+		glog.Infof("Got temp dirs: %+v", tempDirs)
+		glog.Infof("Got temp files: %+v", tempFiles)
+		if len(tempFiles) > 0 {
+			// etl.printFile(tempFiles[0])
+			for _, fn := range tempFiles {
+				etl.printFile(fn)
+			}
+		}
+		panic("stop")
+	*/
+
 	for _, siteHash := range topDirs {
 		cleanSiteHash := cleanLastSlash(siteHash)
 		if regionName, ok := etl.cfg.Names[cleanSiteHash]; ok {
