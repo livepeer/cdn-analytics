@@ -11,9 +11,10 @@ import (
 	"github.com/golang/glog"
 	"github.com/peterbourgon/ff/v3"
 
-	"github.com/livepeer/cdn-log-analytics/internal/app"
-	"github.com/livepeer/cdn-log-analytics/internal/config"
-	"github.com/livepeer/cdn-log-analytics/internal/etl"
+	"github.com/livepeer/cdn-log-puller/internal/app"
+	"github.com/livepeer/cdn-log-puller/internal/config"
+	"github.com/livepeer/cdn-log-puller/internal/etl"
+	"github.com/livepeer/cdn-log-puller/model"
 )
 
 func main() {
@@ -22,6 +23,8 @@ func main() {
 
 	// Get timestamp to measure execution time
 	start := time.Now()
+
+	version := flag.Bool("version", false, "Print out the version")
 
 	// Parameter parsing
 	downloadCmd := flag.NewFlagSet("download", flag.ExitOnError)
@@ -56,6 +59,7 @@ func main() {
 	etlApiUrl := etlCmd.String("api-url", "", "Livepeer API URL")
 
 	if len(os.Args) < 2 {
+		fmt.Printf("Version %s\n", model.Version)
 		fmt.Print("expected 'etl', 'download', 'analyze' or 'insert' subcommands")
 		os.Exit(1)
 	}
@@ -89,6 +93,7 @@ func main() {
 			glog.Fatal(err)
 		}
 
+		glog.Infof("Version %s", model.Version)
 		glog.Info("subcommand 'etl'")
 		glog.Infof("  bucket: %q", *etlBucket)
 		glog.Infof("  credentials: %q", *etlCredentials)
@@ -183,6 +188,12 @@ func main() {
 		}
 
 	default:
+		flag.Parse()
+		fmt.Printf("Version %s\n", model.Version)
+		if *version {
+			os.Exit(0)
+		}
+
 		fmt.Print("expected 'etl', 'download', 'analyze' or 'insert' subcommands")
 		os.Exit(1)
 	}

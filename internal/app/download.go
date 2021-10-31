@@ -11,7 +11,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/golang/glog"
-	"github.com/livepeer/cdn-log-analytics/internal/common"
+	"github.com/livepeer/cdn-log-puller/internal/common"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )

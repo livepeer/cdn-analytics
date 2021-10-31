@@ -16,8 +16,8 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/golang/glog"
-	"github.com/livepeer/cdn-log-analytics/internal/common"
-	"github.com/livepeer/cdn-log-analytics/internal/utils"
+	"github.com/livepeer/cdn-log-puller/internal/common"
+	"github.com/livepeer/cdn-log-puller/internal/utils"
 )
 
 type (

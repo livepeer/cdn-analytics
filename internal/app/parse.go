@@ -11,8 +11,8 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
-	"github.com/livepeer/cdn-log-analytics/internal/common"
-	"github.com/livepeer/cdn-log-analytics/internal/utils"
+	"github.com/livepeer/cdn-log-puller/internal/common"
+	"github.com/livepeer/cdn-log-puller/internal/utils"
 	// "github.com/pkg/profile"
 )
 

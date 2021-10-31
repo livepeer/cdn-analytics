@@ -7,7 +7,7 @@ import (
 
 	"github.com/golang/glog"
 	_ "github.com/lib/pq"
-	"github.com/livepeer/cdn-log-analytics/internal/common"
+	"github.com/livepeer/cdn-log-puller/internal/common"
 )
 
 type PostgresConfig struct {

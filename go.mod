@@ -1,4 +1,4 @@
-module github.com/livepeer/cdn-log-analytics
+module github.com/livepeer/cdn-log-puller
 
 go 1.17
 
