@@ -46,3 +46,7 @@ Examples:
 ```bash
 ./cdn-log-analytics insert -host localhost -port 5432 -user logs -password Passw0rd -db itpqedrl -filepath ./test.sql -verbose
 ```
+
+### docker build on Apple Silicon
+
+docker buildx build --platform=linux/amd64 .
