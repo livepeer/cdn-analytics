@@ -208,6 +208,12 @@ func (etl *Etl) doEtlHour(siteHash string, startHour time.Time, startFile string
 	if err != nil {
 		return err
 	}
+	if startFile != "" {
+		if len(fileNames) > 0 && fileNames[0] == startFile {
+			// query includes file that already was processed
+			fileNames = fileNames[1:]
+		}
+	}
 	if len(fileNames) == 0 {
 		glog.Errorf("no logs files found for hash=%s region=%s startHour=%s", siteHash, regionName, startHour)
 		return errEmpty
