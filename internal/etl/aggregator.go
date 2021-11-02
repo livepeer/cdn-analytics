@@ -191,7 +191,7 @@ func (ag *aggregator) flatten(region string, startHour time.Time, lastFileName s
 	return toSend
 }
 
-const httpTimeout = 4 * time.Second
+const httpTimeout = 64 * time.Second
 
 var defaultHTTPClient = &http.Client{
 	// Transport: &http2.Transport{TLSClientConfig: tlsConfig},
@@ -206,7 +206,7 @@ func (ag *aggregator) postToAPI(data []*SendData) error {
 		glog.Errorf("Error mashalling SendData err=%v", err)
 		return err
 	}
-	glog.V(common.INSANE2).Infof("Posting data=%s", string(bin))
+	glog.V(common.INSANE2).Infof("Posting dataLen=%d data=%s", len(bin), string(bin))
 
 	req, err := http.NewRequest("POST", uri, bytes.NewBuffer(bin))
 	if err != nil {
