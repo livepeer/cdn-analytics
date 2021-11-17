@@ -12,7 +12,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    # - uses: actions/checkout@v1
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        # ref: ${{ github.event.pull_request.head.sha }}
+        lfs: 'true'
+        fetch-depth: '0'
     - name: Docker Registry
       env:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
@@ -24,6 +30,10 @@ jobs:
       uses: livepeer/action-gh-release-tags@v0
       with:
         force-latest: true
+
+    - name: Run tests
+      shell: bash
+      run: go test ./...
 
     - name: Build the Docker image
       run: |
