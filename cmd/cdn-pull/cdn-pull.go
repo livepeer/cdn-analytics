@@ -1,17 +1,25 @@
 package main
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/golang/glog"
 	"github.com/peterbourgon/ff/v3"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 
 	"github.com/livepeer/cdn-log-puller/internal/app"
+	"github.com/livepeer/cdn-log-puller/internal/common"
 	"github.com/livepeer/cdn-log-puller/internal/config"
 	"github.com/livepeer/cdn-log-puller/internal/etl"
 	"github.com/livepeer/cdn-log-puller/model"
@@ -57,6 +65,14 @@ func main() {
 	etlStaging := etlCmd.Bool("staging", true, "Parse staging data instead of production")
 	etlApiKey := etlCmd.String("api-key", "", "Livepeer API key")
 	etlApiUrl := etlCmd.String("api-url", "", "Livepeer API URL")
+
+	catCmd := flag.NewFlagSet("cat", flag.ExitOnError)
+	catVerbosity := catCmd.String("v", "", "Log verbosity.  {4|5|6}")
+	catBucket := catCmd.String("bucket", "", "The name of the bucket where logs are located")
+	catCredentials := catCmd.String("creds", "", "File name of file with credentials")
+	catConfig := catCmd.String("config", "config.yaml", "Name of the config file")
+	catRegion := catCmd.String("region", "", "Region")
+	catDownloadDir := catCmd.String("down", "", "Download to dir instead of printing to console")
 
 	if len(os.Args) < 2 {
 		fmt.Printf("Version %s\n", model.Version)
@@ -110,6 +126,75 @@ func main() {
 			}
 			glog.Fatal(err)
 		}
+	case "cat":
+		ff.Parse(catCmd, os.Args[2:],
+			ff.WithEnvVarPrefix("CP"),
+			ff.WithConfigFileFlag("config"),
+			ff.WithConfigFileParser(ff.PlainParser),
+		)
+		flag.CommandLine.Parse(nil)
+		vFlag.Value.Set(*catVerbosity)
+		if *catBucket == "" {
+			glog.Fatalf("Please provide bucket name")
+		}
+		cfg, err := config.ReadConfig(*catConfig)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		if *catRegion == "" {
+			glog.Fatalf("Please provide region name")
+		}
+		var topDirName string
+		for k, v := range cfg.Names {
+			if v == *catRegion {
+				topDirName = k
+				break
+			}
+		}
+		if topDirName == "" {
+			glog.Fatalf("Region %s is invalid", *catRegion)
+		}
+
+		glog.Infof("Version %s", model.Version)
+		glog.Info("subcommand 'cat'")
+		glog.Infof("  bucket: %q", *catBucket)
+		glog.Infof("  credentials: %q", *catCredentials)
+		glog.Infof("  config: %q", *catConfig)
+		gctx := context.TODO()
+		var opts []option.ClientOption
+		opts = append(opts, option.WithCredentialsFile(*catCredentials))
+		client, err := storage.NewClient(gctx, opts...)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		query := storage.Query{
+			Delimiter: "",
+			Prefix:    topDirName + "/cds/",
+		}
+		ctx, cancel := context.WithTimeout(gctx, time.Second*15)
+		it := client.Bucket(*catBucket).Objects(ctx, &query)
+		defer cancel()
+		for {
+			fi, err := it.Next()
+			if err != nil {
+				if err == iterator.Done {
+					break
+				}
+				glog.Errorf("Returning err=%v", err)
+				glog.Fatal(err)
+			}
+			// if limit > 0 && count >= limit {
+			// 	break
+			// }
+			glog.V(common.DEBUG).Infof("==> Got file name=%q prefix=%q", fi.Name, fi.Prefix)
+			if *catDownloadDir != "" {
+				downloadFile(client, *catBucket, fi.Name, *catDownloadDir)
+			} else {
+				printFile(client, *catBucket, fi.Name)
+			}
+		}
+
+		client.Close()
 
 	case "download":
 		ff.Parse(downloadCmd, os.Args[2:],
@@ -200,4 +285,53 @@ func main() {
 
 	elapsed := time.Since(start)
 	glog.Infof("Execution took %s", elapsed)
+}
+
+func printFile(client *storage.Client, bucket, file string) {
+	fmt.Printf("Printing file %s\n", file)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*6000)
+	defer cancel()
+	rc, err := client.Bucket(bucket).Object(file).NewReader(ctx)
+	if err != nil {
+		panic(fmt.Errorf("Object(%q).NewReader: %v", file, err))
+	}
+	defer rc.Close()
+
+	reader, err := gzip.NewReader(rc)
+	if err != nil {
+		panic(err)
+	}
+	defer reader.Close()
+
+	contents := bufio.NewScanner(reader)
+	for contents.Scan() {
+		line := contents.Text()
+		fmt.Println(line)
+	}
+}
+
+func downloadFile(client *storage.Client, bucket, file, targetDir string) {
+	_, targetFileName := filepath.Split(file)
+	targetFullPath := filepath.Join(targetDir, targetFileName)
+	if _, err := os.Stat(targetFullPath); err == nil {
+		glog.V(common.DEBUG).Infof("File %s exists on disk, skipping download", targetFullPath)
+		return
+	}
+	glog.Infof("Downloading file %s", file)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*6000)
+	defer cancel()
+	rc, err := client.Bucket(bucket).Object(file).NewReader(ctx)
+	if err != nil {
+		panic(fmt.Errorf("Object(%q).NewReader: %v", file, err))
+	}
+	defer rc.Close()
+	fh, err := os.Create(targetFullPath)
+	if err != nil {
+		panic(err)
+	}
+	_, err = io.Copy(fh, rc)
+	if err != nil {
+		panic(err)
+	}
+	fh.Close()
 }
