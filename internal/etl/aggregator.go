@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -345,13 +346,16 @@ func parseFile(ctx context.Context, gsClient *storage.Client, bucket, file strin
 	return contents.Err()
 }
 
-func parseLine(line string, c chan VideoStat) {
+var errInvalidLine = errors.New("invalid line")
+
+func parseLine(line string, c chan VideoStat) error {
 	toks := strings.Split(line, "\t")
 	// glog.Infof("Parsing line:%s", line)
 
 	if len(toks) < 17 {
-		glog.V(common.DEBUG).Infof("Warning: line is not following the log standard. line=%q", line)
-		return
+		glog.V(common.DEBUG).Infof("Warning: line is not following the log standard. parts=%d line=%q", len(toks), line)
+		glog.Errorf("Warning: line is not following the log standard. parts=%d line=%q", len(toks), line)
+		return errInvalidLine
 	}
 
 	date := toks[0]
@@ -367,13 +371,13 @@ func parseLine(line string, c chan VideoStat) {
 		glog.V(common.VVERBOSE).Infof("Warning: invalid URL format: '%s'. line=%q", url, line)
 		scBytesInt, err := strconv.ParseInt(scBytes, 10, 64)
 		if err != nil {
-			return
+			return errInvalidLine
 		}
 		c <- VideoStat{
 			httpCode: "other",
 			ScBytes:  scBytesInt,
 		}
-		return
+		return nil
 	}
 
 	if date == "" || streamId == "" {
@@ -408,6 +412,7 @@ func parseLine(line string, c chan VideoStat) {
 	// }
 
 	c <- tempVideoStat
+	return nil
 }
 
 func getCsvLine(date string, streamId string, manifestId string, manifestName string, countUniqueIPs int, contIPs int, totalCsBytes int64, totalScyBytes int64, totalFilesize int64, httpCode string) string {

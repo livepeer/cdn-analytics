@@ -15,7 +15,7 @@ type (
 const (
 	IDTypeManifestID IDType = "manifest_id"
 	IDTypeStreamID   IDType = "stream_id"
-	IDTypeStreamName IDType = "stream_name"
+	// IDTypeStreamName IDType = "stream_name"
 )
 
 var (
