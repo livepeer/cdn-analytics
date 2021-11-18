@@ -56,7 +56,7 @@ func GetStreamId(url string) (string, IDType, error) {
 	id := toks[2]
 
 	switch toks[1] {
-	case "hls":
+	case "hls", "cmaf":
 		idType = IDTypeManifestID
 	case "recordings":
 		idType = IDTypeStreamID
@@ -84,4 +84,4 @@ func GetStreamId(url string) (string, IDType, error) {
 	return id, idType, nil
 }
 
-var allowedExts = []string{".m3u8", ".ts", ".mp4"}
+var allowedExts = []string{".m3u8", ".ts", ".mp4", ".m4s"}
